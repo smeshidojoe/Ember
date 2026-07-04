@@ -16,7 +16,7 @@ from typing import Optional
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, safe_filename
+from ..models import Media, MediaVariant, Result, safe_filename
 
 SERVICE = "twitter"
 
@@ -77,15 +77,6 @@ def _syndication_token(tweet_id: str) -> str:
         if frac <= 0:
             break
     return re.sub(r"0+|\.", "", out)
-
-
-def _best_mp4(variants) -> Optional[dict]:
-    mp4 = [v for v in variants
-           if v.get("content_type", v.get("type", "")) in ("video/mp4",)
-           or v.get("src", v.get("url", "")).endswith(".mp4")]
-    if not mp4:
-        return None
-    return max(mp4, key=lambda v: int(v.get("bitrate") or 0))
 
 
 def _from_syndication(ctx: Context, tweet_id: str):
@@ -160,13 +151,41 @@ def _from_graphql(ctx: Context, tweet_id: str):
     return result
 
 
+def _append_entry(entry: dict, media_items: list, thumbs: list) -> None:
+    """Добавляет медиа из mediaDetails/extended_entities с вариантами качества."""
+    etype = entry.get("type")
+    if etype in ("video", "animated_gif"):
+        info = entry.get("video_info") or {}
+        mp4 = [v for v in info.get("variants", [])
+               if (v.get("content_type") or v.get("type")) == "video/mp4"]
+        if not mp4:
+            return
+        variants = []
+        for v in sorted(mp4, key=lambda x: int(x.get("bitrate") or 0), reverse=True):
+            u = v.get("url") or v.get("src")
+            hm = re.search(r"/(\d+)x(\d+)/", u or "")
+            height = int(hm.group(2)) if hm else None
+            variants.append(MediaVariant(url=u, height=height,
+                                         quality=f"{height}p" if height else None,
+                                         ext="mp4"))
+        kind = "gif" if etype == "animated_gif" else "video"
+        media_items.append(Media(kind=kind, url=variants[0].url, ext="mp4",
+                                 quality=variants[0].quality, variants=variants))
+        if entry.get("media_url_https"):
+            thumbs.append(entry["media_url_https"])
+    elif etype == "photo" and entry.get("media_url_https"):
+        media_items.append(Media(kind="photo",
+                                 url=entry["media_url_https"] + "?name=orig",
+                                 ext="jpg"))
+
+
 def extract(ctx: Context, url: str) -> Result:
     m = re.search(r"/status(?:es)?/(\d+)", url)
     if not m:
-        raise ExtractionError("в ссылке нет id твита", SERVICE)
+        raise ExtractionError("no tweet id in the link", SERVICE)
     tweet_id = m.group(1)
 
-    media_items, title, author = [], None, None
+    media_items, thumbs, title, author = [], [], None, None
 
     # с cookies аккаунта GraphQL видит и NSFW-твиты — syndication нет,
     # поэтому при наличии авторизации идём сразу в GraphQL
@@ -175,17 +194,7 @@ def extract(ctx: Context, url: str) -> Result:
         title = (data.get("text") or "").strip() or None
         author = (data.get("user") or {}).get("screen_name")
         for entry in data.get("mediaDetails") or []:
-            info = entry.get("video_info") or {}
-            if entry.get("type") in ("video", "animated_gif") and info.get("variants"):
-                best = _best_mp4(info["variants"])
-                if best:
-                    kind = "gif" if entry["type"] == "animated_gif" else "video"
-                    media_items.append(Media(kind=kind, url=best["url"], ext="mp4"))
-            elif entry.get("type") == "photo" and entry.get("media_url_https"):
-                media_items.append(Media(
-                    kind="photo",
-                    url=entry["media_url_https"] + "?name=orig",
-                    ext="jpg"))
+            _append_entry(entry, media_items, thumbs)
 
     if not media_items:
         result = _from_graphql(ctx, tweet_id)
@@ -199,30 +208,21 @@ def extract(ctx: Context, url: str) -> Result:
                       or author)
             entities = (legacy.get("extended_entities") or {}).get("media") or []
             for entry in entities:
-                info = entry.get("video_info") or {}
-                if entry.get("type") in ("video", "animated_gif") and info.get("variants"):
-                    best = _best_mp4(info["variants"])
-                    if best:
-                        kind = "gif" if entry["type"] == "animated_gif" else "video"
-                        media_items.append(Media(kind=kind, url=best["url"], ext="mp4"))
-                elif entry.get("type") == "photo" and entry.get("media_url_https"):
-                    media_items.append(Media(
-                        kind="photo",
-                        url=entry["media_url_https"] + "?name=orig",
-                        ext="jpg"))
+                _append_entry(entry, media_items, thumbs)
 
     if not media_items:
         if has_auth_cookies(ctx):
             raise ExtractionError(
-                "не удалось получить медиа даже с cookies: твит удалён, "
-                "приватный или в нём нет видео/фото", SERVICE)
+                "could not get media even with cookies: tweet deleted, "
+                "private, or has no video/photo", SERVICE)
         raise ExtractionError(
-            "не удалось получить медиа: твит удалён, приватный или NSFW. "
-            "Для NSFW передайте cookies аккаунта X (auth_token и ct0): "
+            "could not get media: tweet deleted, private, or NSFW. "
+            "For NSFW pass X account cookies (auth_token and ct0): "
             'extract(url, cookies={"auth_token": "...", "ct0": "..."})',
             SERVICE)
 
     hint = safe_filename(f"twitter_{author or 'tweet'}_{tweet_id}")
     kind = "single" if len(media_items) == 1 else "gallery"
     return Result(service=SERVICE, kind=kind, media=media_items, title=title,
-                  author=author, source_url=url, filename_hint=hint)
+                  author=author, source_url=url, filename_hint=hint,
+                  thumbnail=thumbs[0] if thumbs else None)

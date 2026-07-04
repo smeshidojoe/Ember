@@ -45,7 +45,7 @@ def _resolve_shortcode(ctx: Context, url: str) -> str:
     m = re.search(r"/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)", r.url)
     if not m:
         raise ExtractionError(
-            f"не удалось определить код поста по ссылке {url}", SERVICE)
+            f"could not determine post shortcode from link {url}", SERVICE)
     return m.group(1)
 
 
@@ -142,9 +142,9 @@ def extract(ctx: Context, url: str) -> Result:
             or _from_oembed(ctx, shortcode))
     if not data:
         raise ExtractionError(
-            "Instagram не отдал пост анонимно. Попробуйте передать cookies "
-            "залогиненного аккаунта: extract(url, cookies={...}) "
-            "или другой IP через proxies={...}", SERVICE)
+            "Instagram did not return the post anonymously. Try passing "
+            "logged-in account cookies: extract(url, cookies={...}) "
+            "or a different IP via proxies={...}", SERVICE)
 
     owner = data.get("owner") or {}
     author = owner.get("username")
@@ -168,7 +168,7 @@ def extract(ctx: Context, url: str) -> Result:
             media_items.append(item)
 
     if not media_items:
-        raise ExtractionError("в посте не нашлось видео или фото", SERVICE)
+        raise ExtractionError("no video or photo found in the post", SERVICE)
 
     hint = safe_filename(f"instagram_{author or 'post'}_{shortcode}")
     kind = "single" if len(media_items) == 1 else "gallery"

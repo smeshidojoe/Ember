@@ -37,7 +37,7 @@ def _resolve_post_id(ctx: Context, url: str) -> str:
     m = re.search(r"reddit\.com/(?:r/[^/]+/)?comments/([a-z0-9]+)", r.url)
     if not m:
         raise ExtractionError(
-            f"не удалось определить id поста по ссылке {url}", SERVICE)
+            f"could not determine post id from link {url}", SERVICE)
     return m.group(1)
 
 
@@ -61,18 +61,18 @@ def extract(ctx: Context, url: str) -> Result:
     r = ctx.get(f"https://www.reddit.com/comments/{post_id}.json?raw_json=1")
     if r.status_code == 403:
         raise ExtractionError(
-            "Reddit заблокировал анонимный доступ с этого IP "
-            "(«blocked due to a network policy» — часто бывает на VPN/хостинг-IP). "
-            "Помогает extract(url, proxies={...}) с другим IP", SERVICE)
+            "Reddit blocked anonymous access from this IP "
+            "(\"blocked due to a network policy\" — common on VPN/hosting IPs). "
+            "extract(url, proxies={...}) with a different IP helps", SERVICE)
     if r.status_code != 200:
         raise ExtractionError(
-            f"Reddit ответил HTTP {r.status_code} (пост удалён или приватный сабреддит)",
+            f"Reddit returned HTTP {r.status_code} (post deleted or private subreddit)",
             SERVICE)
 
     try:
         post = r.json()[0]["data"]["children"][0]["data"]
     except (ValueError, LookupError) as e:
-        raise ExtractionError(f"неожиданный ответ Reddit: {e}", SERVICE) from e
+        raise ExtractionError(f"unexpected Reddit response: {e}", SERVICE) from e
 
     # кросспост: медиа лежит в оригинальном посте
     if not post.get("secure_media") and post.get("crosspost_parent_list"):
@@ -100,7 +100,7 @@ def extract(ctx: Context, url: str) -> Result:
                 ext = "gif" if source.get("gif") else "jpg"
                 media.append(Media(kind="photo", url=u, ext=ext))
         if not media:
-            raise ExtractionError("галерея без изображений", SERVICE)
+            raise ExtractionError("gallery has no images", SERVICE)
         return result("gallery", media)
 
     direct = post.get("url_overridden_by_dest") or post.get("url") or ""
@@ -127,4 +127,4 @@ def extract(ctx: Context, url: str) -> Result:
         return result("single", [Media(kind="photo", url=direct, ext=ext)])
 
     raise ExtractionError(
-        "в посте нет поддерживаемого медиа (текст или внешняя ссылка)", SERVICE)
+        "no supported media in the post (text or external link)", SERVICE)

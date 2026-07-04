@@ -37,13 +37,13 @@ def _via_ytdlp(browser: str, profile: Optional[str], domains) -> Optional[dict]:
         msg = str(e)
         if "DPAPI" in msg or "decrypt" in msg.lower():
             raise EmberError(
-                f"не удалось прочитать cookies из {browser}: современные "
-                "Chrome/Edge/Brave шифруют их (App-Bound Encryption) так, "
-                "что их не читает даже yt-dlp. Варианты: используйте Firefox "
-                "(--cookies-from-browser firefox), либо экспортируйте "
-                "cookies.txt расширением браузера и передайте --cookies-file, "
-                "либо вручную --cookies \"auth_token=...; ct0=...\"") from e
-        raise EmberError(f"не удалось прочитать cookies из {browser}: {msg}") from e
+                f"could not read cookies from {browser}: modern "
+                "Chrome/Edge/Brave encrypt them (App-Bound Encryption) so that "
+                "even yt-dlp cannot read them. Options: use Firefox "
+                "(--cookies-from-browser firefox), export cookies.txt with a "
+                "browser extension and pass --cookies-file, or pass them "
+                "manually with --cookies \"auth_token=...; ct0=...\"") from e
+        raise EmberError(f"could not read cookies from {browser}: {msg}") from e
     out = {}
     for c in jar:
         if any(d in (c.domain or "") for d in domains):
@@ -58,7 +58,7 @@ def _via_browser_cookie3(browser: str, domains) -> Optional[dict]:
         return None
     loader = getattr(browser_cookie3, browser, None)
     if loader is None:
-        raise EmberError(f"browser_cookie3 не знает браузер '{browser}'")
+        raise EmberError(f"browser_cookie3 does not know browser '{browser}'")
     out = {}
     for domain in domains:
         for c in loader(domain_name=domain):
@@ -97,7 +97,6 @@ def cookies_from_browser(
         result = _via_browser_cookie3(browser, domains)
     if result is None:
         raise EmberError(
-            "чтобы брать cookies из браузера, нужен yt-dlp или browser_cookie3 "
-            "(pip install yt-dlp). Либо передайте cookies вручную "
-            "через cookies={...}")
+            "reading cookies from a browser needs yt-dlp or browser_cookie3 "
+            "(pip install yt-dlp). Or pass cookies manually via cookies={...}")
     return result

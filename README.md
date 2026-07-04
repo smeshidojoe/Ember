@@ -1,230 +1,175 @@
+**[🇷🇺 Русский](ССЫЛКА_НА_РУССКУЮ_ВЕРСИЮ)** · **[🇬🇧 English](ССЫЛКА_НА_АНГЛИЙСКУЮ_ВЕРСИЮ)**
+
+<!-- Replace ССЫЛКА_НА_РУССКУЮ_ВЕРСИЮ and ССЫЛКА_НА_АНГЛИЙСКУЮ_ВЕРСИЮ with the real
+     links after uploading to GitHub (e.g. to README.md and README.en.md in the repo). -->
+
 # Ember
 
-Аналог [cobalt](https://github.com/imputnet/cobalt) в виде встраиваемой Python-библиотеки.
-По ссылке на пост возвращает **прямые URL медиафайлов + метаданные** — скачивает уже ваша программа.
+An embeddable Python library and CLI for extracting and downloading media from social
+platforms — a compact alternative to [cobalt](https://github.com/imputnet/cobalt). Given a
+post URL it returns **direct media URLs + metadata** and can **download by itself**
+(including HLS), without requiring yt-dlp.
 
-Поддерживаемые сервисы: **TikTok** (видео, фото-посты, музыка), **Twitter/X** (видео, гифки, фото), **Instagram** (посты, Reels, карусели), **Reddit** (видео, гифки, картинки, галереи).
+The only required dependency is `requests`. Python 3.9+.
 
-Единственная зависимость — `requests`. Нужен Python 3.9+.
+## Supported services
 
-## Установка
+TikTok · Twitter/X · Instagram · Reddit · Vimeo · SoundCloud · Pinterest · Tumblr ·
+Bluesky · Newgrounds · Rutube · OK.ru · VK / VK Video · Facebook · Twitch (clips) — **15 services**.
 
-Пакета нет в публичном реестре PyPI, поэтому `pip install ember` **не сработает**.
-Ставится он одним из способов ниже (все они всё равно используют `pip`, просто
-указывают, откуда брать код). Проверить, что установилось: `python -c "import ember; print(ember.__version__)"`.
+> Some services (Reddit, Newgrounds, OK.ru) block anonymous requests from
+> datacenter/VPN addresses; Instagram and Facebook may require cookies for full access.
+> See the "Limitations" section.
 
-### Вариант 1 — из локальной папки (сейчас так и сделано)
+## Installation
 
-```
-pip install -e D:\Projects\Ember
-```
+Not on PyPI — install from source or from Git:
 
-`-e` (editable) — пакет ссылается на папку, правки в коде подхватываются сразу,
-переустанавливать не нужно. Минус: **папку нельзя удалять или переносить**, иначе
-импорт сломается. Если хотите «жёсткую» установку, скопированную внутрь Python
-(папку потом можно удалить) — уберите `-e`:
+```bash
+# from a local folder
+pip install .
 
-```
-pip install D:\Projects\Ember
-```
+# from a repository
+pip install git+https://github.com/USER/ember.git
 
-### Вариант 2 — из Git (если выложите репозиторий)
-
-После загрузки на GitHub/GitLab ставится прямо по ссылке, скачивать вручную не надо:
-
-```
-pip install git+https://github.com/ВАШ_ЛОГИН/ember.git
+# with --cookies-from-browser support and tests
+pip install ".[browser,dev]"
 ```
 
-Можно закрепить ветку или тег: `...ember.git@main` или `...ember.git@v0.1.0`.
-Обновление до свежей версии из репозитория:
+After installation both the Python API (`import ember`) and the `ember` command are available.
 
-```
-pip install --upgrade --force-reinstall git+https://github.com/ВАШ_ЛОГИН/ember.git
-```
+Downloading HLS with separate tracks, muxing video+audio, embedding metadata and
+audio-only mode require **ffmpeg** in `PATH` (not needed for direct mp4 or plain HLS).
 
-Чтобы этот способ работал, в репозитории должны лежать `pyproject.toml` и папка
-`ember/` (они уже есть). На машине пользователя нужен установленный `git`.
-
-Чтобы Ember ставился как зависимость вашей программы, добавьте ту же строку в её
-`requirements.txt`:
-
-```
-git+https://github.com/ВАШ_ЛОГИН/ember.git
-```
-
-### Вариант 3 — вообще без установки
-
-Просто скопируйте папку `ember/` рядом с кодом вашей программы (в тот же каталог,
-где лежит главный `.py`). Тогда `import ember` заработает без всякого `pip`.
-Единственное требование — чтобы был установлен `requests` (`pip install requests`).
-
-## Использование
+## Quick start — Python
 
 ```python
 import ember
 
-result = ember.extract("https://www.tiktok.com/@user/video/7123456789")
-
-print(result.title, result.author)
+# 1) get direct links and metadata
+result = ember.extract("https://vimeo.com/76979871")
+print(result.title, result.author, result.thumbnail)
 for m in result.media:
-    print(m.kind, m.url)          # прямая ссылка
-    print(m.http_headers)         # передайте эти заголовки загрузчику!
-```
+    print(m.kind, m.quality, m.url)
 
-### Что возвращается
+# 2) download with Ember itself (no yt-dlp needed)
+def on_progress(p: ember.DownloadProgress):
+    if p.fraction is not None:
+        print(f"{p.fraction*100:.0f}%")
 
-`Result.kind` говорит, как обращаться с медиа:
-
-| kind | значение |
-|---|---|
-| `single` | один файл — качаете `media[0].url` |
-| `merge` | видео и аудио раздельно (Reddit) — скачать оба и объединить ffmpeg |
-| `gallery` | несколько независимых файлов (карусель, фото-пост) |
-
-`Result.filename_hint` — готовое безопасное имя файла без расширения.
-
-**Важно:** у каждого `Media` есть `http_headers`. Для TikTok там cookies и User-Agent — без них CDN вернёт 403. Всегда передавайте их своему загрузчику (у yt-dlp это опция `http_headers`).
-
-### Проверка ссылки и fallback на yt-dlp
-
-```python
-if ember.can_extract(url):
-    try:
-        result = ember.extract(url)
-    except ember.EmberError:
-        run_ytdlp(url)   # ваш существующий путь
-else:
-    run_ytdlp(url)
-```
-
-### Дополнительные параметры
-
-```python
-ember.extract(
-    url,
-    timeout=20,                                # сек на каждый запрос
-    proxies={"https": "http://127.0.0.1:8080"},
-    cookies={"sessionid": "..."},              # для Instagram под логином
+paths = ember.download(
+    result, "downloads/",
+    max_height=720,        # cap quality
+    concurrency=6,         # parallel HLS segments
+    on_progress=on_progress,
+    embed_metadata=True,   # write title/author (ffmpeg)
 )
 ```
 
-## Использование в cmd
+Link check and quality list:
 
-Открываете обычный **cmd** (в любой папке — пакет установлен в систему) и пишете:
-
-```
-python -m ember "ССЫЛКА"
-```
-
-Ссылку **обязательно берите в кавычки** — иначе cmd обрежет её на символах `&` и `?`.
-
-Примеры:
-
-```
-:: показать прямые ссылки и метаданные
-python -m ember "https://x.com/user/status/123456789"
-
-:: то же, но в виде JSON (удобно, если разбираете вывод программой)
-python -m ember "https://www.tiktok.com/@user/video/7123456789" --json
-
-:: увеличить таймаут (медленный интернет/прокси)
-python -m ember "https://redd.it/abc123" --timeout 30
-
-:: с cookies (для NSFW-твитов и закрытого Instagram)
-python -m ember "https://x.com/user/status/123" --cookies "auth_token=...; ct0=..."
-python -m ember "https://x.com/user/status/123" --cookies-from-browser firefox
-python -m ember "https://x.com/user/status/123" --cookies-file cookies.txt
+```python
+ember.can_extract(url)                 # is the link supported
+ember.available_qualities(result.media[0])   # e.g. [1080, 720, 480]
+ember.ffmpeg_available()               # is ffmpeg present
 ```
 
-Все ключи разом — `python -m ember --help`.
+Playlists (SoundCloud sets for now):
 
-Что выведет (пример):
-
-```
-сервис:   twitter
-тип:      single
-автор:    MKBHD
-название: Gaming phones… please never change
-файл:     twitter_MKBHD_1858993800800334259
-  1. video .mp4
-     https://video.twimg.com/amplify_video/.../vid.mp4
+```python
+if ember.supports_playlist(url):
+    for entry in ember.extract_playlist(url).entries:
+        ember.download(entry, "downloads/")
 ```
 
-Строка после `1.` — это и есть прямая ссылка, её можно вставить в браузер/загрузчик.
+## Quick start — command line
 
-## Как работает Ember (кратко)
+Quote the URL. **Without `-d` the command only prints links and metadata — no download
+starts.** Flag order does not matter.
 
-Ember **не качает файлы** — он выясняет, где реальный файл лежит, и отдаёт на него прямую
-ссылку. Принцип тот же, что у cobalt:
+```bash
+# show direct links and metadata
+ember "https://x.com/user/status/123456789"
 
-1. **Определяет сервис по ссылке.** Роутер сверяет URL с шаблонами каждого сервиса
-   (`can_extract` → какой из TikTok/Twitter/Instagram/Reddit). Не подошло ни к одному —
-   `UnsupportedUrlError`, и вы отдаёте ссылку своему yt-dlp.
-2. **Ходит на «внутренние» API сервиса — так же, как это делает сам сайт в браузере.**
-   Для каждого сервиса свой приём: TikTok — читает JSON, встроенный в HTML страницы видео;
-   Twitter/X — дёргает публичный API твитов; Instagram — GraphQL / embed / мобильный oembed
-   по очереди; Reddit — открытый `.json`-эндпоинт поста. Никакого «взлома» — только те же
-   запросы, что уходят при обычном просмотре.
-3. **Достаёт из ответа прямые URL медиа и метаданные** (автор, заголовок, качество) и
-   складывает в объект `Result` со списком `Media`. Если у сервиса видео и звук раздельно
-   (Reddit), помечает `kind="merge"` — их надо смуксить (это умеет ffmpeg / yt-dlp).
-4. **Возвращает ссылки вам.** К каждой ссылке прилагаются `http_headers` (cookies, User-Agent) —
-   некоторые CDN (например TikTok) без них отвечают 403. Скачивает уже ваша программа
-   любым способом.
+# same, as JSON
+ember "https://www.tiktok.com/@user/video/7123456789" --json
 
-Почему так удобнее для встраивания: библиотека делает только «умную» часть (разбор страницы),
-не тянет за собой скачивание, ffmpeg и тяжёлые зависимости — кроме `requests` ничего не нужно.
-Каждый сервис — отдельный файл в `ember/services/`; если сайт поменяет формат, чинится точечно
-один файл, остальное не затрагивается.
+# DOWNLOAD: -d enables it (name from the site, current folder)
+ember -d "https://vimeo.com/76979871"
 
-## Интеграция в PySide6
+# custom file name (-o) and folder (-p)
+ember -d -o myclip -p downloads "https://vimeo.com/76979871"
 
-Полный пример — [examples/pyside6_integration.py](examples/pyside6_integration.py):
-извлечение в `QThreadPool` (не блокирует UI), скачивание через уже имеющийся yt-dlp,
-автоматический fallback на yt-dlp, если Ember не справился.
+# cap quality, fetch HLS in 6 threads
+ember -d -p downloads --max-height 720 --concurrency 6 "https://rutube.ru/video/<id>/"
 
-## Ограничения и сопровождение
+# audio only + write metadata into the file (needs ffmpeg)
+ember -d --audio-only --embed-metadata "https://soundcloud.com/user/track"
 
-- **Instagram** — самый хрупкий: анонимный доступ периодически блокируют.
-  Библиотека пробует GraphQL → embed-страницу → мобильный oembed
-  (последний отдаёт только превью-картинку, у неё `quality == "thumbnail"`).
-  Для полного качества на заблокированных сетях передайте cookies
-  залогиненного аккаунта.
-- **Reddit** блокирует анонимные запросы с VPN и хостинговых IP
-  («blocked due to a network policy»). В этом случае библиотека выдаёт
-  понятную `ExtractionError`; помогает `proxies=` с обычным IP.
-- **Twitter/X**: NSFW-твиты без авторизации не отдаются (ограничение самого API).
-  Решение — cookies аккаунта X (нужны две: `auth_token` и `ct0`).
+# a whole playlist / set
+ember -d --playlist "https://soundcloud.com/user/sets/name"
 
-### Как передать cookies
-
-Три способа, от простого к ручному:
-
-```
-# 1. Прямо из браузера (как yt-dlp --cookies-from-browser)
-python -m ember "<ссылка>" --cookies-from-browser firefox
-
-# 2. Файл cookies.txt (формат Netscape — его экспортируют расширения браузера)
-python -m ember "<ссылка>" --cookies-file cookies.txt
-
-# 3. Вручную, две cookie строкой
-python -m ember "<ссылка>" --cookies "auth_token=...; ct0=..."
+# cookies (NSFW tweets, private Instagram)
+ember "https://x.com/user/status/123" --cookies "auth_token=...; ct0=..."
+ember "https://x.com/user/status/123" --cookies-from-browser firefox
 ```
 
-В коде: `extract(url, cookies_from_browser="firefox")` или
-`extract(url, cookies={"auth_token": "...", "ct0": "..."})`.
+## Flags cheat sheet
 
-**Важно про Chrome/Edge/Brave на Windows:** начиная с Chrome 127 cookies
-шифруются App-Bound Encryption, и их не может прочитать даже yt-dlp
-([yt-dlp#10927](https://github.com/yt-dlp/yt-dlp/issues/10927)). Поэтому
-`--cookies-from-browser chrome` там не сработает. Рабочие варианты:
-**Firefox** (шифрование другое, читается), либо экспорт **cookies.txt**
-расширением, либо ручной ввод двух cookie. Ember выдаёт понятную подсказку,
-если расшифровка не удалась.
-- Сервисы меняют форматы страниц. Каждый извлекатель — отдельный файл в
-  `ember/services/`, чинится точечно. При обновлении сверяйтесь с
-  [исходниками cobalt](https://github.com/imputnet/cobalt/tree/main/api/src/processing/services) —
-  архитектура намеренно повторяет их подходы.
-- Ошибки: ловите базовый `ember.EmberError` (подклассы: `UnsupportedUrlError`,
-  `NetworkError`, `ExtractionError`).
+| Flag | Meaning |
+|---|---|
+| `-d`, `--download` | enable downloading (without it — only print links) |
+| `-o`, `--output NAME` | output file name without extension (default: from the site); implies download |
+| `-p`, `--path DIR` | target folder (default: current folder); implies download |
+| `--json` | print metadata as JSON |
+| `--max-height N` | cap quality by height (e.g. `720`) |
+| `--audio-only` | keep audio only (needs ffmpeg); implies download |
+| `--concurrency N` | parallel HLS segments (default `1`) |
+| `--embed-metadata` (`--metadata`) | write title/author into the file (needs ffmpeg); implies download |
+| `--playlist` | treat as a set (SoundCloud sets) |
+| `--timeout SEC` | per-request timeout, seconds (default `15`) |
+| `--cookies "a=1; b=2"` | cookies as a string |
+| `--cookies-file FILE` | cookies.txt in Netscape format (like yt-dlp) |
+| `--cookies-from-browser B` | cookies from a browser: brave/chrome/chromium/edge/firefox/opera/safari/vivaldi/whale |
+| `--browser-profile P` | browser profile for the previous flag |
+| `-h`, `--help` | show help and exit |
+
+Terminal help — `ember --help` or `ember -h`:
+
+```
+usage: ember [-h] [--json] [--timeout SEC] [-d] [-o NAME] [-p DIR]
+             [--max-height N] [--audio-only] [--concurrency N]
+             [--embed-metadata] [--playlist] [--cookies "name=value; ..."]
+             [--cookies-file cookies.txt] [--cookies-from-browser BROWSER]
+             [--browser-profile PROFILE]
+             url
+```
+
+## How it works
+
+Ember calls the same "internal" service APIs that the site itself uses in the browser,
+pulls direct media links and metadata out of the response, and packs them into a `Result`
+object. Each service is a small standalone module in `ember/services/`. HLS manifests are
+parsed by a built-in parser, segments are fetched and assembled into a file (with ffmpeg —
+remuxed into `.mp4`).
+
+## Limitations
+
+- **Instagram** — anonymously often returns only a preview; pass cookies for full quality.
+- **Reddit, Newgrounds, OK.ru** — block anonymous requests from datacenter/VPN IPs; they
+  work on a normal home IP. `proxies=` / a different IP helps.
+- **Facebook** — public video usually requires cookies.
+- **Twitter/X** — NSFW tweets require account cookies (`auth_token` and `ct0`).
+- Full YouTube support is out of scope — use yt-dlp for it.
+
+## Tests
+
+```bash
+pip install ".[dev]"
+pytest
+```
+
+## Credits
+
+Extraction methods follow the approaches of
+[imputnet/cobalt](https://github.com/imputnet/cobalt).

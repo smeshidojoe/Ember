@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Optional
 
 import requests
 
 from .errors import NetworkError
+
+# статусы, которые имеет смысл повторить (временные сбои)
+_RETRY_STATUS = {429, 500, 502, 503, 504}
 
 # Обычный десктопный Chrome — тот же подход, что у cobalt (genericUserAgent).
 DEFAULT_UA = (
@@ -22,13 +26,26 @@ class Context:
 
     session: requests.Session
     timeout: float = 15.0
+    retries: int = 2          # число ПОВТОРОВ сверх первой попытки
+    backoff: float = 0.6      # базовая пауза между повторами, секунды
 
     def request(self, method: str, url: str, **kwargs) -> requests.Response:
         kwargs.setdefault("timeout", self.timeout)
-        try:
-            return self.session.request(method, url, **kwargs)
-        except requests.RequestException as e:
-            raise NetworkError(f"{method} {url}: {e}") from e
+        last_exc: Optional[Exception] = None
+        for attempt in range(self.retries + 1):
+            try:
+                resp = self.session.request(method, url, **kwargs)
+            except requests.RequestException as e:
+                last_exc = e
+            else:
+                # повторяем только временные серверные статусы
+                if resp.status_code in _RETRY_STATUS and attempt < self.retries:
+                    time.sleep(self.backoff * (attempt + 1))
+                    continue
+                return resp
+            if attempt < self.retries:
+                time.sleep(self.backoff * (attempt + 1))
+        raise NetworkError(f"{method} {url}: {last_exc}")
 
     def get(self, url: str, **kwargs) -> requests.Response:
         return self.request("GET", url, **kwargs)
@@ -57,6 +74,7 @@ def make_context(
     timeout: float = 15.0,
     proxies: Optional[dict] = None,
     session: Optional[requests.Session] = None,
+    retries: int = 2,
 ) -> Context:
     if session is None:
         session = requests.Session()
@@ -68,4 +86,4 @@ def make_context(
     session.headers.setdefault("Accept-Language", "en-US,en;q=0.9")
     if proxies:
         session.proxies.update(proxies)
-    return Context(session=session, timeout=timeout)
+    return Context(session=session, timeout=timeout, retries=retries)

@@ -13,8 +13,8 @@
 import sys
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
-from PySide6.QtWidgets import (QApplication, QLineEdit, QPushButton,
-                               QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QLineEdit, QProgressBar,
+                               QPushButton, QTextEdit, QVBoxLayout, QWidget)
 
 import ember
 
@@ -41,42 +41,35 @@ class ExtractWorker(QRunnable):
             self.signals.failed.emit(str(e))
 
 
-def download_with_ytdlp(result: "ember.Result", out_dir: str = "."):
-    """Скачивание результата Ember через yt-dlp (у вас он уже есть).
+class DownloadSignals(QObject):
+    progress = Signal(float)     # доля 0..1 (или -1, если неизвестна)
+    finished = Signal(list)      # список путей
+    failed = Signal(str)
 
-    yt-dlp принимает прямые URL и http_headers, а для kind="merge"
-    сам объединит видео и аудио через ffmpeg.
+
+class DownloadWorker(QRunnable):
+    """Скачивание средствами самого Ember (yt-dlp не нужен), в фоне.
+
+    Прогресс отдаётся сигналом, так что окно не подвисает и можно
+    рисовать прогресс-бар. HLS качается в несколько потоков.
     """
-    import yt_dlp
 
-    if result.kind == "merge":
-        video, audio = result.media[0], result.media[1]
-        opts = {
-            "outtmpl": f"{out_dir}/{result.filename_hint}.%(ext)s",
-            "http_headers": video.http_headers or None,
-        }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            # прямые ссылки: видео + отдельное аудио
-            info = {
-                "id": result.filename_hint,
-                "title": result.filename_hint,
-                "formats": [
-                    {"url": video.url, "format_id": "video", "ext": video.ext,
-                     "vcodec": "h264", "acodec": "none"},
-                    {"url": audio.url, "format_id": "audio", "ext": audio.ext,
-                     "vcodec": "none", "acodec": "aac"},
-                ],
-                "format": "video+audio",
-            }
-            ydl.process_ie_result(info, download=True)
-    else:
-        for m in result.media:
-            opts = {
-                "outtmpl": f"{out_dir}/{result.filename_hint}.%(ext)s",
-                "http_headers": m.http_headers or None,
-            }
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.download([m.url])
+    def __init__(self, result, out_dir="downloads", max_height=None):
+        super().__init__()
+        self.result, self.out_dir, self.max_height = result, out_dir, max_height
+        self.signals = DownloadSignals()
+
+    @Slot()
+    def run(self):
+        def on_progress(p: ember.DownloadProgress):
+            self.signals.progress.emit(p.fraction if p.fraction is not None else -1.0)
+        try:
+            paths = ember.download(self.result, self.out_dir,
+                                   max_height=self.max_height, concurrency=6,
+                                   on_progress=on_progress)
+            self.signals.finished.emit(paths)
+        except ember.EmberError as e:
+            self.signals.failed.emit(str(e))
 
 
 class Demo(QWidget):
@@ -86,12 +79,14 @@ class Demo(QWidget):
         self.pool = QThreadPool.globalInstance()
 
         self.url_edit = QLineEdit(placeholderText="Вставьте ссылку…")
-        self.button = QPushButton("Получить ссылки")
+        self.button = QPushButton("Скачать")
+        self.progress = QProgressBar()
         self.log = QTextEdit(readOnly=True)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.url_edit)
         layout.addWidget(self.button)
+        layout.addWidget(self.progress)
         layout.addWidget(self.log)
 
         self.button.clicked.connect(self.on_click)
@@ -112,10 +107,25 @@ class Demo(QWidget):
 
     def on_done(self, result):
         self.log.append(f"[{result.service}] {result.title or result.filename_hint}")
-        for m in result.media:
-            self.log.append(f"  {m.kind}: {m.url[:120]}…")
-        if result.requires_merge:
-            self.log.append("  (видео и аудио раздельно — при скачивании нужен ffmpeg)")
+        # извлекли ссылки — сразу качаем средствами Ember с прогрессом
+        dl = DownloadWorker(result, out_dir="downloads")
+        dl.signals.progress.connect(self.on_progress)
+        dl.signals.finished.connect(self.on_downloaded)
+        dl.signals.failed.connect(self.on_fail)
+        self.pool.start(dl)
+
+    def on_progress(self, fraction: float):
+        if fraction < 0:
+            self.progress.setRange(0, 0)          # неизвестно — «бегущая» полоса
+        else:
+            self.progress.setRange(0, 100)
+            self.progress.setValue(int(fraction * 100))
+
+    def on_downloaded(self, paths):
+        self.progress.setRange(0, 100)
+        self.progress.setValue(100)
+        for p in paths:
+            self.log.append(f"готово: {p}")
 
     def on_fail(self, message):
         self.log.append(f"Ember не справился: {message}")

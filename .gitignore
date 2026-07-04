@@ -11,10 +11,19 @@ dist/
 venv/
 env/
 
-# IDE
+# IDE / инструменты
 .vscode/
 .idea/
+.claude/
+.pytest_cache/
 
 # личное — НЕ коммитить cookies!
 cookies.txt
 *.cookies
+
+# кэш и скачанные файлы
+cache.json
+ember_cache.json
+*.ts
+*.part
+/downloads/

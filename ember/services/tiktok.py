@@ -38,7 +38,7 @@ def _resolve_post_id(ctx: Context, url: str) -> str:
     m = re.search(r"/(?:video|photo)/(\d+)", r.url)
     if not m:
         raise ExtractionError(
-            f"не удалось определить id поста по ссылке {url}", SERVICE)
+            f"could not determine post id from link {url}", SERVICE)
     return m.group(1)
 
 
@@ -49,15 +49,15 @@ def extract(ctx: Context, url: str) -> Result:
     m = _REHYDRATION_RE.search(page.text)
     if not m:
         raise ExtractionError(
-            "на странице нет __UNIVERSAL_DATA_FOR_REHYDRATION__ "
-            "(возможно, TikTok показал капчу)", SERVICE)
+            "page has no __UNIVERSAL_DATA_FOR_REHYDRATION__ "
+            "(TikTok may have shown a captcha)", SERVICE)
 
     try:
         data = json.loads(m.group(1))
         detail = data["__DEFAULT_SCOPE__"]["webapp.video-detail"]
         item = detail["itemInfo"]["itemStruct"]
     except (json.JSONDecodeError, KeyError) as e:
-        raise ExtractionError(f"неожиданная структура данных: {e}", SERVICE) from e
+        raise ExtractionError(f"unexpected data structure: {e}", SERVICE) from e
 
     author = (item.get("author") or {}).get("uniqueId")
     title = (item.get("desc") or "").strip() or None
@@ -87,7 +87,7 @@ def extract(ctx: Context, url: str) -> Result:
                 kind="audio", url=music_url, ext="mp3",
                 http_headers=dict(dl_headers)))
         if not media:
-            raise ExtractionError("фото-пост без изображений", SERVICE)
+            raise ExtractionError("photo post has no images", SERVICE)
         return Result(
             service=SERVICE, kind="gallery", media=media,
             title=title, author=author, source_url=url, filename_hint=hint)
@@ -96,7 +96,7 @@ def extract(ctx: Context, url: str) -> Result:
     play_addr = video.get("playAddr")
     if not play_addr:
         raise ExtractionError(
-            "у поста нет ссылки на видео (удалён или регион заблокирован)",
+            "post has no video URL (deleted or region-blocked)",
             SERVICE)
 
     quality = None
@@ -113,4 +113,5 @@ def extract(ctx: Context, url: str) -> Result:
         author=author,
         source_url=url,
         filename_hint=hint,
+        thumbnail=video.get("cover") or video.get("originCover"),
     )

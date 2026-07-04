@@ -17,16 +17,28 @@ from .errors import (
     UnsupportedUrlError,
 )
 from .cookies import cookies_from_browser
-from .models import Media, Result
-from .router import can_extract, extract, supported_services
+from .download import (DownloadProgress, available_qualities, download,
+                       download_media, ffmpeg_available)
+from .models import Media, MediaVariant, Playlist, Result
+from .router import (can_extract, extract, extract_playlist, supported_services,
+                     supports_playlist)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "extract",
+    "extract_playlist",
     "can_extract",
+    "supports_playlist",
     "supported_services",
     "cookies_from_browser",
+    "download",
+    "download_media",
+    "available_qualities",
+    "ffmpeg_available",
+    "DownloadProgress",
+    "MediaVariant",
+    "Playlist",
     "Result",
     "Media",
     "EmberError",

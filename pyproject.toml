@@ -4,11 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ember-extract"
-version = "0.1.0"
-description = "Извлечение прямых ссылок на медиа из TikTok, Twitter/X, Instagram, Reddit (аналог cobalt в виде библиотеки)"
+version = "0.2.0"
+description = "Извлечение и скачивание медиа из 15 сервисов (аналог cobalt в виде встраиваемой библиотеки)"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["requests>=2.25"]
 
+[project.optional-dependencies]
+browser = ["yt-dlp"]          # для --cookies-from-browser
+dev = ["pytest>=7"]
+
+[project.scripts]
+ember = "ember.__main__:main"
+
 [tool.setuptools.packages.find]
 include = ["ember*"]
+
+[tool.setuptools.package-data]
+ember = ["py.typed"]
