@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# окружения
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# личное — НЕ коммитить cookies!
+cookies.txt
+*.cookies
