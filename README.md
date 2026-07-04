@@ -26,7 +26,7 @@ Not on PyPI — install from source or from Git:
 # from a repository
 pip install git+https://github.com/USER/ember.git
 
-# for better --cookies-from-browser support
+# for --cookies-from-browser support
 pip install yt-dlp
 ```
 
