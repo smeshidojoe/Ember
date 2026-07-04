@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ember-extract"
-version = "0.2.0"
+version = "0.2.1"
 description = "Извлечение и скачивание медиа из 15 сервисов (аналог cobalt в виде встраиваемой библиотеки)"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["requests>=2.25"]
 
 [project.optional-dependencies]
-browser = ["yt-dlp"]          # для --cookies-from-browser
+# --cookies-from-browser работает без зависимостей для Firefox и Windows-Chromium;
+# yt-dlp нужен лишь как fallback (например Chromium на macOS/Linux)
+browser = ["yt-dlp"]
 dev = ["pytest>=7"]
 
 [project.scripts]

@@ -11,12 +11,29 @@
 
 ## Поддерживаемые сервисы
 
-TikTok · Twitter/X · Instagram · Reddit · Vimeo · SoundCloud · Pinterest · Tumblr ·
-Bluesky · Newgrounds · Rutube · OK.ru · VK / VK Видео · Facebook · Twitch (клипы) — **15 сервисов**.
+**15 сервисов:**
 
-> Некоторые сервисы (Reddit, Newgrounds, OK.ru) блокируют анонимные запросы с
-> датацентровых/VPN-адресов; Instagram и Facebook для полного доступа могут требовать
-> cookies. Подробнее — в разделе «Ограничения».
+| Сервис | Что достаёт | Примечания |
+|---|---|---|
+| TikTok | видео, фото-посты, музыка | |
+| Twitter/X | видео, гифки, фото | NSFW-твиты требуют cookies |
+| Instagram | посты, Reels, карусели | анонимно часто только превью; для полного — cookies |
+| Reddit | видео, гифки, картинки, галереи | возможен блок по IP на VPN/датацентрах |
+| Vimeo | видео (mp4/HLS) | |
+| SoundCloud | треки, наборы (sets) | премиум-треки анонимно отдают 30-сек превью |
+| Pinterest | видео/картинки пинов | |
+| Tumblr | видео, аудио, фото | |
+| Bluesky | видео (HLS), картинки, гифки | |
+| Newgrounds | видео, аудио | анти-бот на части IP |
+| Rutube | видео (HLS) | |
+| OK.ru | видео | может требоваться обычный (не датацентр) IP |
+| VK / VK Видео | видео, клипы | |
+| Facebook | видео, Reels | обычно нужны cookies |
+| Twitch | клипы (clips) | не VOD/трансляции |
+
+> Reddit, Newgrounds и OK.ru блокируют анонимные запросы с датацентровых/VPN-адресов
+> (на обычном домашнем IP работают); Instagram и Facebook для полного доступа могут
+> требовать cookies. Подробнее — в разделе «Ограничения».
 
 ## Установка
 
@@ -25,12 +42,14 @@ Bluesky · Newgrounds · Rutube · OK.ru · VK / VK Видео · Facebook · Tw
 ```bash
 # из репозитория
 pip install git+https://github.com/USER/ember.git
-
-# для поддержки --cookies-from-browser обязательно
-pip install yt-dlp
 ```
 
 После установки доступны и Python-API (`import ember`), и команда `ember`.
+
+`--cookies-from-browser` работает «из коробки» (без доп. зависимостей) для **Firefox**
+(любая ОС) и **Chromium-браузеров на Windows** (Vivaldi, Opera, а также Chrome/Edge/Brave
+без App-Bound Encryption). `pip install yt-dlp` нужен лишь как необязательный fallback для
+случаев, которые встроенный ридер не покрывает (например, Chromium на macOS/Linux).
 
 Для скачивания HLS с раздельными дорожками, склейки видео+аудио, встраивания
 метаданных и режима «только аудио» нужен **ffmpeg** в `PATH` (для прямых mp4 и

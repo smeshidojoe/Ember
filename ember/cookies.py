@@ -2,27 +2,50 @@
 yt-dlp --cookies-from-browser.
 
 Порядок предпочтений:
-1. yt-dlp (если установлен) — самый надёжный, умеет расшифровывать
-   cookies новых версий Chrome (App-Bound Encryption);
-2. browser_cookie3 — запасной вариант.
+1. свой ридер (_browser_cookies): Firefox (любая ОС) и Chromium-семейство
+   на Windows — без обязательных зависимостей;
+2. yt-dlp (если установлен) — покрывает то, что не умеет свой ридер
+   (например Chromium на macOS/Linux через системный keyring);
+3. browser_cookie3 — запасной вариант.
 
-Возвращается обычный dict {name: value}. Оба бэкенда — необязательные:
-если ни одного нет, поднимается EmberError с понятным сообщением.
+Возвращается обычный dict {name: value}. Fallback-бэкенды необязательные:
+если для непокрытой комбинации ни одного нет, поднимается EmberError.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
+from . import _browser_cookies as native
 from .errors import EmberError
 
 # домены, cookies которых имеет смысл тянуть под каждый сервис
 _DOMAIN_HINTS = {
+    "tiktok": ["tiktok.com"],
     "twitter": ["x.com", "twitter.com"],
     "instagram": ["instagram.com"],
-    "tiktok": ["tiktok.com"],
     "reddit": ["reddit.com"],
+    "vimeo": ["vimeo.com"],
+    "soundcloud": ["soundcloud.com"],
+    "pinterest": ["pinterest.com"],
+    "tumblr": ["tumblr.com"],
+    "bluesky": ["bsky.app", "bsky.social"],
+    "newgrounds": ["newgrounds.com"],
+    "rutube": ["rutube.ru"],
+    "ok": ["ok.ru", "odnoklassniki.ru"],
+    "vk": ["vk.com", "vkvideo.ru", "vk.ru"],
+    "facebook": ["facebook.com"],
+    "twitch": ["twitch.tv"],
 }
+
+
+def _via_native(browser: str, profile: Optional[str], domains) -> Optional[dict]:
+    """Свой ридер. None — если комбинация нам не по силам (нужен fallback).
+    EmberError (например, App-Bound Encryption) пробрасывается наружу."""
+    try:
+        return native.native_cookies(browser, profile, domains)
+    except native.NativeUnsupported:
+        return None
 
 
 def _via_ytdlp(browser: str, profile: Optional[str], domains) -> Optional[dict]:
@@ -44,6 +67,8 @@ def _via_ytdlp(browser: str, profile: Optional[str], domains) -> Optional[dict]:
                 "browser extension and pass --cookies-file, or pass them "
                 "manually with --cookies \"auth_token=...; ct0=...\"") from e
         raise EmberError(f"could not read cookies from {browser}: {msg}") from e
+    except Exception as e:  # прочие ошибки yt-dlp (напр. safari на Windows)
+        raise EmberError(f"could not read cookies from {browser}: {e}") from e
     out = {}
     for c in jar:
         if any(d in (c.domain or "") for d in domains):
@@ -74,17 +99,17 @@ def cookies_from_browser(
     """Достаёт cookies из указанного браузера.
 
     Args:
-        browser: "chrome", "firefox", "edge", "brave", "opera", ...
+        browser: "firefox", "vivaldi", "chrome", "edge", "brave", "opera", ...
         service: имя сервиса Ember — тогда берутся только его домены.
                  Если None, тянутся домены всех сервисов.
-        profile: имя/путь профиля браузера (только для бэкенда yt-dlp).
+        profile: имя профиля браузера.
 
     Returns:
         dict {имя_cookie: значение}.
 
     Raises:
-        EmberError: не установлен ни yt-dlp, ни browser_cookie3,
-                    либо браузер не поддерживается.
+        EmberError: комбинацию не покрыл свой ридер, а fallback-бэкендов
+                    (yt-dlp / browser_cookie3) нет; либо браузер под ABE.
     """
     browser = browser.lower().strip()
     if service:
@@ -92,11 +117,15 @@ def cookies_from_browser(
     else:
         domains = [d for lst in _DOMAIN_HINTS.values() for d in lst]
 
-    result = _via_ytdlp(browser, profile, domains)
+    result = _via_native(browser, profile, domains)
+    if result is None:
+        result = _via_ytdlp(browser, profile, domains)
     if result is None:
         result = _via_browser_cookie3(browser, domains)
     if result is None:
         raise EmberError(
-            "reading cookies from a browser needs yt-dlp or browser_cookie3 "
-            "(pip install yt-dlp). Or pass cookies manually via cookies={...}")
+            f"could not read cookies from {browser} on this OS: our reader "
+            "doesn't cover it and neither yt-dlp nor browser_cookie3 is "
+            "installed. Use Firefox, export --cookies-file, pass --cookies "
+            "manually, or `pip install yt-dlp`")
     return result

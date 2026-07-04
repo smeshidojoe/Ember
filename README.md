@@ -11,12 +11,29 @@ The only required dependency is `requests`. Python 3.9+.
 
 ## Supported services
 
-TikTok · Twitter/X · Instagram · Reddit · Vimeo · SoundCloud · Pinterest · Tumblr ·
-Bluesky · Newgrounds · Rutube · OK.ru · VK / VK Video · Facebook · Twitch (clips) — **15 services**.
+**15 services:**
 
-> Some services (Reddit, Newgrounds, OK.ru) block anonymous requests from
-> datacenter/VPN addresses; Instagram and Facebook may require cookies for full access.
-> See the "Limitations" section.
+| Service | Extracts | Notes |
+|---|---|---|
+| TikTok | videos, photo posts, music | |
+| Twitter/X | videos, GIFs, photos | NSFW tweets need cookies |
+| Instagram | posts, Reels, carousels | anonymously often preview-only; cookies for full quality |
+| Reddit | videos, GIFs, images, galleries | may be IP-blocked on VPN/datacenter |
+| Vimeo | videos (mp4/HLS) | |
+| SoundCloud | tracks, sets | premium tracks give a 30s preview anonymously |
+| Pinterest | video/image pins | |
+| Tumblr | video, audio, photos | |
+| Bluesky | video (HLS), images, GIFs | |
+| Newgrounds | video, audio | anti-bot on some IPs |
+| Rutube | videos (HLS) | |
+| OK.ru | videos | may need a normal (non-datacenter) IP |
+| VK / VK Video | videos, clips | |
+| Facebook | videos, Reels | usually needs cookies |
+| Twitch | clips only | not VODs/streams |
+
+> Reddit, Newgrounds and OK.ru block anonymous requests from datacenter/VPN addresses
+> (they work on a normal home IP); Instagram and Facebook may require cookies for full
+> access. See "Limitations".
 
 ## Installation
 
@@ -25,12 +42,14 @@ Not on PyPI — install from source or from Git:
 ```bash
 # from a repository
 pip install git+https://github.com/USER/ember.git
-
-# for --cookies-from-browser support
-pip install yt-dlp
 ```
 
 After installation both the Python API (`import ember`) and the `ember` command are available.
+
+`--cookies-from-browser` works out of the box (no extra deps) for **Firefox** (any OS)
+and **Chromium-family browsers on Windows** (Vivaldi, Opera, and non-ABE Chrome/Edge/Brave).
+Installing `pip install yt-dlp` is only an optional fallback for cases the built-in reader
+doesn't cover (e.g. Chromium on macOS/Linux).
 
 Downloading HLS with separate tracks, muxing video+audio, embedding metadata and
 audio-only mode require **ffmpeg** in `PATH` (not needed for direct mp4 or plain HLS).

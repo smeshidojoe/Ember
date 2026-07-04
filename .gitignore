@@ -17,6 +17,9 @@ env/
 .claude/
 .pytest_cache/
 
+# приватная подробная документация (только для себя, НЕ на гитхаб)
+DOCS.md
+
 # личное — НЕ коммитить cookies!
 cookies.txt
 *.cookies
