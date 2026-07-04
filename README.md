@@ -1,7 +1,4 @@
-**[🇷🇺 Русский](ССЫЛКА_НА_РУССКУЮ_ВЕРСИЮ)** · **[🇬🇧 English](ССЫЛКА_НА_АНГЛИЙСКУЮ_ВЕРСИЮ)**
-
-<!-- Replace ССЫЛКА_НА_РУССКУЮ_ВЕРСИЮ and ССЫЛКА_НА_АНГЛИЙСКУЮ_ВЕРСИЮ with the real
-     links after uploading to GitHub (e.g. to README.md and README.en.md in the repo). -->
+**[🇷🇺 Русский](https://github.com/smeshidojoe/Ember/blob/main/README.RU.md)** · **[🇬🇧 English](https://github.com/smeshidojoe/Ember/blob/main/README.md)**
 
 # Ember
 
@@ -26,14 +23,11 @@ Bluesky · Newgrounds · Rutube · OK.ru · VK / VK Video · Facebook · Twitch 
 Not on PyPI — install from source or from Git:
 
 ```bash
-# from a local folder
-pip install .
-
 # from a repository
 pip install git+https://github.com/USER/ember.git
 
-# with --cookies-from-browser support and tests
-pip install ".[browser,dev]"
+# for better --cookies-from-browser support
+pip install yt-dlp
 ```
 
 After installation both the Python API (`import ember`) and the `ember` command are available.
@@ -161,13 +155,6 @@ remuxed into `.mp4`).
 - **Facebook** — public video usually requires cookies.
 - **Twitter/X** — NSFW tweets require account cookies (`auth_token` and `ct0`).
 - Full YouTube support is out of scope — use yt-dlp for it.
-
-## Tests
-
-```bash
-pip install ".[dev]"
-pytest
-```
 
 ## Credits
 
