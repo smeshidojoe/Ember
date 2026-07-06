@@ -140,6 +140,7 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | `--concurrency N` | parallel HLS segments (default `1`) |
 | `--embed-metadata` (`--metadata`) | write title/author into the file (needs ffmpeg); implies download |
 | `--playlist` | treat as a set (SoundCloud sets) |
+| `--proxy URL` | proxy for all requests, e.g. `http://host:port` (helps with IP-blocked sites) |
 | `--timeout SEC` | per-request timeout, seconds (default `15`) |
 | `--cookies "a=1; b=2"` | cookies as a string |
 | `--cookies-file FILE` | cookies.txt in Netscape format (like yt-dlp) |
@@ -152,9 +153,9 @@ Terminal help — `ember --help` or `ember -h`:
 ```
 usage: ember [-h] [--json] [--timeout SEC] [-d] [-o NAME] [-p DIR]
              [--max-height N] [--audio-only] [--concurrency N]
-             [--embed-metadata] [--playlist] [--cookies "name=value; ..."]
-             [--cookies-file cookies.txt] [--cookies-from-browser BROWSER]
-             [--browser-profile PROFILE]
+             [--embed-metadata] [--playlist] [--proxy URL]
+             [--cookies "name=value; ..."] [--cookies-file cookies.txt]
+             [--cookies-from-browser BROWSER] [--browser-profile PROFILE]
              url
 ```
 

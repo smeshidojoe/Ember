@@ -217,8 +217,7 @@ def extract(ctx: Context, url: str) -> Result:
                 "private, or has no video/photo", SERVICE)
         raise ExtractionError(
             "could not get media: tweet deleted, private, or NSFW. "
-            "For NSFW pass X account cookies (auth_token and ct0): "
-            'extract(url, cookies={"auth_token": "...", "ct0": "..."})',
+            "NSFW tweets need account cookies (auth_token and ct0).",
             SERVICE)
 
     hint = safe_filename(f"twitter_{author or 'tweet'}_{tweet_id}")

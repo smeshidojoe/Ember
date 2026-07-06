@@ -142,9 +142,8 @@ def extract(ctx: Context, url: str) -> Result:
             or _from_oembed(ctx, shortcode))
     if not data:
         raise ExtractionError(
-            "Instagram did not return the post anonymously. Try passing "
-            "logged-in account cookies: extract(url, cookies={...}) "
-            "or a different IP via proxies={...}", SERVICE)
+            "Instagram did not return the post anonymously. It needs "
+            "logged-in account cookies, or a different IP (proxy).", SERVICE)
 
     owner = data.get("owner") or {}
     author = owner.get("username")

@@ -63,7 +63,7 @@ def extract(ctx: Context, url: str) -> Result:
         raise ExtractionError(
             "Reddit blocked anonymous access from this IP "
             "(\"blocked due to a network policy\" — common on VPN/hosting IPs). "
-            "extract(url, proxies={...}) with a different IP helps", SERVICE)
+            "A different IP (proxy) or a home connection helps.", SERVICE)
     if r.status_code != 200:
         raise ExtractionError(
             f"Reddit returned HTTP {r.status_code} (post deleted or private subreddit)",

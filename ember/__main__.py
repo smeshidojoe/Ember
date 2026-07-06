@@ -8,15 +8,26 @@ Installed entry point is `ember`; `python -m ember` works too.
 """
 
 import argparse
+import re
 import sys
 import time
 
 from . import (DownloadProgress, EmberError, available_qualities, download,
                extract, extract_playlist, supports_playlist)
+from .http import make_context
 
 # browsers understood by --cookies-from-browser (same set as yt-dlp)
 BROWSERS = ["brave", "chrome", "chromium", "edge", "firefox",
             "opera", "safari", "vivaldi", "whale"]
+
+# options that take a value (can accidentally swallow the URL) + example values
+_VALUE_OPTS = {
+    "-o": "myfile", "--output": "myfile", "-p": "downloads", "--path": "downloads",
+    "--max-height": "720", "--concurrency": "6", "--timeout": "20",
+    "--proxy": "http://host:port", "--cookies": '"a=1; b=2"',
+    "--cookies-file": "cookies.txt", "--cookies-from-browser": "firefox",
+    "--browser-profile": "Default",
+}
 
 
 def _parse_cookies_arg(raw: str) -> dict:
@@ -86,13 +97,41 @@ def _print_result(result) -> None:
 
 
 class _Parser(argparse.ArgumentParser):
-    """Adds a hint when the URL is accidentally consumed by an option value."""
+    """Turns confusing argparse errors into short, clear CLI messages
+    (especially when a value-taking option accidentally swallows the URL)."""
+
+    def _fail(self, text: str):
+        # короткое сообщение без простыни usage
+        sys.stderr.write(f"ember: error: {text}\n")
+        self.exit(2)
 
     def error(self, message):
-        if "required: url" in message and any(
-                a.startswith("http") for a in sys.argv[1:]):
-            message += ('\nit looks like the URL was consumed by an option value. '
-                        'Put the URL first, e.g.:  ember "URL" -d -o NAME')
+        argv = sys.argv[1:]
+        url = next((a for a in argv if a.startswith(("http://", "https://"))), None)
+
+        # 1) ссылка «съедена» как значение опции (напр. --cookies-from-browser URL)
+        if url:
+            i = argv.index(url)
+            prev = argv[i - 1] if i > 0 else None
+            if prev in _VALUE_OPTS:
+                sample = _VALUE_OPTS[prev]
+                self._fail(
+                    f'"{prev}" needs a value, but your link was taken as its value.\n'
+                    f'  put the value after "{prev}", e.g.:  '
+                    f'ember {prev} {sample} "{url}"\n'
+                    f'  or just show links:                 ember "{url}"')
+
+        # 2) опция требует значение, но его нет (напр. в конце строки)
+        m = re.search(r"argument ([^:]+): expected one argument", message)
+        if m:
+            opt = m.group(1).split("/")[-1].strip()
+            sample = _VALUE_OPTS.get(opt, "<value>")
+            self._fail(f'"{opt}" needs a value, e.g.:  ember {opt} {sample} "URL"')
+
+        # 3) ссылка есть, но не встала как позиционный аргумент
+        if "required: url" in message and url:
+            self._fail(f'put the link as the last argument, e.g.:  ember "{url}"')
+
         super().error(message)
 
 
@@ -122,6 +161,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="write title/author into the file (needs ffmpeg); implies --download")
     p.add_argument("--playlist", action="store_true",
                    help="treat as a playlist/set (SoundCloud sets)")
+    p.add_argument("--proxy", metavar="URL",
+                   help="proxy for all requests, e.g. http://host:port "
+                        "(helps with IP-blocked sites)")
     # cookies
     p.add_argument("--cookies", metavar='"name=value; ..."',
                    help="cookies as a string (NSFW tweets, private Instagram)")
@@ -132,6 +174,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--browser-profile", metavar="PROFILE",
                    help="browser profile for --cookies-from-browser")
     return p
+
+
+def _report_error(msg: str, prefix: str = "error") -> None:
+    """Печатает ошибку и, если уместно, подсказку с CLI-флагами (не с Python-API)."""
+    print(f"{prefix}: {msg}", file=sys.stderr)
+    low = msg.lower()
+    if "cookie" in low and "could not read cookies" not in low and "app-bound" not in low:
+        print('hint: pass cookies with  --cookies "name=value; ..."  |  '
+              "--cookies-file cookies.txt  |  --cookies-from-browser firefox",
+              file=sys.stderr)
+    if "proxy" in low or "network policy" in low:
+        print("hint: try another IP with  --proxy http://host:port", file=sys.stderr)
 
 
 def main() -> int:
@@ -147,7 +201,8 @@ def main() -> int:
     if args.cookies:
         cookies.update(_parse_cookies_arg(args.cookies))
 
-    common = dict(timeout=args.timeout, cookies=cookies or None,
+    proxies = {"http": args.proxy, "https": args.proxy} if args.proxy else None
+    common = dict(timeout=args.timeout, proxies=proxies, cookies=cookies or None,
                   cookies_from_browser=args.cookies_from_browser,
                   browser_profile=args.browser_profile)
 
@@ -163,7 +218,7 @@ def main() -> int:
         else:
             results = [extract(args.url, **common)]
     except EmberError as e:
-        print(f"error: {e}", file=sys.stderr)
+        _report_error(str(e))
         return 1
 
     if args.json:
@@ -183,16 +238,19 @@ def main() -> int:
     out_dir = args.path or "."
     # custom name applies only to a single result (not to a whole playlist)
     name = args.output if len(results) == 1 else None
+    dl_ctx = make_context(timeout=args.timeout, proxies=proxies)
     cb = _make_progress_printer()
     for r in results:
         print(f"downloading: {(r.title or r.filename_hint)[:70]}")
         try:
-            paths = download(r, out_dir, filename=name, max_height=args.max_height,
+            paths = download(r, out_dir, filename=name, ctx=dl_ctx,
+                             max_height=args.max_height,
                              concurrency=args.concurrency, on_progress=cb,
                              audio_only=args.audio_only,
                              embed_metadata=args.embed_metadata)
         except EmberError as e:
-            print(f"\n  error: {e}", file=sys.stderr)
+            print()
+            _report_error(str(e), prefix="  error")
             continue
         print("\r" + " " * 40, end="")
         for p in paths:

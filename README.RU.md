@@ -141,6 +141,7 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | `--concurrency N` | параллельных сегментов HLS (по умолчанию `1`) |
 | `--embed-metadata` (`--metadata`) | вписать название/автора в файл (нужен ffmpeg); включает загрузку |
 | `--playlist` | обработать как набор (SoundCloud sets) |
+| `--proxy URL` | прокси для всех запросов, напр. `http://host:port` (помогает с блоком по IP) |
 | `--timeout SEC` | таймаут запроса, сек (по умолчанию `15`) |
 | `--cookies "a=1; b=2"` | cookies строкой |
 | `--cookies-file FILE` | cookies.txt в формате Netscape (как у yt-dlp) |
@@ -153,9 +154,9 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 ```
 usage: ember [-h] [--json] [--timeout SEC] [-d] [-o NAME] [-p DIR]
              [--max-height N] [--audio-only] [--concurrency N]
-             [--embed-metadata] [--playlist] [--cookies "name=value; ..."]
-             [--cookies-file cookies.txt] [--cookies-from-browser BROWSER]
-             [--browser-profile PROFILE]
+             [--embed-metadata] [--playlist] [--proxy URL]
+             [--cookies "name=value; ..."] [--cookies-file cookies.txt]
+             [--cookies-from-browser BROWSER] [--browser-profile PROFILE]
              url
 ```
 

@@ -58,7 +58,7 @@ def extract(ctx: Context, url: str) -> Result:
     if not m:
         raise ExtractionError(
             "no video URL found. Facebook often serves it only to logged-in "
-            "users: pass cookies_from_browser=\"firefox\" or cookies={...}", SERVICE)
+            "users — it needs account cookies.", SERVICE)
     try:
         video_url = json.loads(m.group(1))
     except ValueError:
