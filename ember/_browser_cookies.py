@@ -1,15 +1,16 @@
-"""Свой ридер cookies из браузеров — без обязательных зависимостей.
+"""Built-in browser cookie reader — no required dependencies.
 
-Покрывает то, что реально читается:
-  - Firefox (любая ОС): cookies.sqlite — незашифрованный, только stdlib;
-  - Chromium-семейство на Windows (Vivaldi, Opera, старые Chrome/Edge/Brave):
-    ключ из Local State через DPAPI, значения — AES-256-GCM.
+Covers what is actually readable:
+  - Firefox (any OS): cookies.sqlite — unencrypted, stdlib only;
+  - Chromium family on Windows (Vivaldi, Opera, non-ABE Chrome/Edge/Brave):
+    key from Local State via DPAPI, values are AES-256-GCM;
+  - Chromium on macOS/Linux: key from Keychain/keyring, values AES-128-CBC.
 
-App-Bound Encryption (современные Chrome/Edge/Brave, cookies с префиксом v20)
-не поддерживается никем, включая yt-dlp — на неё выдаём понятную ошибку.
+App-Bound Encryption (modern Chrome/Edge/Brave, cookies prefixed v20) is
+supported by nobody, including yt-dlp — we raise a clear error for it.
 
-AES-GCM берётся из cryptography или pycryptodome, если установлены; иначе —
-встроенная реализация на чистом Python (для cookies её скорости достаточно).
+AES is taken from cryptography or pycryptodome if installed; otherwise a
+built-in pure-Python implementation (fast enough for tiny cookie values).
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from .errors import EmberError
 
 
 class NativeUnsupported(Exception):
-    """Комбинация браузер+ОС не покрывается нашим ридером — нужен fallback."""
+    """The browser+OS combo is not covered by our reader — need a fallback."""
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,35 @@ def aes_gcm_decrypt(key: bytes, nonce: bytes, ciphertext: bytes, tag: bytes) -> 
     except ImportError:
         pass
     return _aes_gcm_decrypt_pure(key, nonce, ciphertext, tag)
+
+
+def aes_cbc_decrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
+    """AES-CBC (macOS/Linux Chromium cookies, encrypted HLS). Backends:
+    cryptography -> pycryptodome -> pure Python."""
+    try:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        d = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+        return d.update(data) + d.finalize()
+    except ImportError:
+        pass
+    try:
+        from Crypto.Cipher import AES
+        return AES.new(key, AES.MODE_CBC, iv).decrypt(data)
+    except ImportError:
+        pass
+    try:
+        from Cryptodome.Cipher import AES  # type: ignore
+        return AES.new(key, AES.MODE_CBC, iv).decrypt(data)
+    except ImportError:
+        pass
+    return _aes_cbc_decrypt_pure(key, iv, data)
+
+
+def _pkcs7_unpad(data: bytes) -> bytes:
+    if not data:
+        return data
+    n = data[-1]
+    return data[:-n] if 1 <= n <= 16 else data
 
 
 # --- чистый Python AES (FIPS-197) ---
@@ -142,6 +172,50 @@ def _encrypt_block(block: bytes, w, nr: int) -> bytes:
     return bytes(s[r][c] for c in range(4) for r in range(4))
 
 
+_INV_SBOX = [0] * 256
+for _i, _v in enumerate(_SBOX):
+    _INV_SBOX[_v] = _i
+
+
+def _decrypt_block(block: bytes, w, nr: int) -> bytes:
+    """Inverse AES cipher (for CBC)."""
+    s = [[block[r + 4 * c] for c in range(4)] for r in range(4)]
+
+    def add_round_key(rnd):
+        for c in range(4):
+            for r in range(4):
+                s[r][c] ^= w[rnd * 4 + c][r]
+
+    add_round_key(nr)
+    for rnd in range(nr - 1, -1, -1):
+        for r in range(1, 4):                        # InvShiftRows: сдвиг вправо на r
+            s[r] = s[r][-r:] + s[r][:-r]
+        for r in range(4):                            # InvSubBytes
+            for c in range(4):
+                s[r][c] = _INV_SBOX[s[r][c]]
+        add_round_key(rnd)
+        if rnd != 0:                                  # InvMixColumns
+            for c in range(4):
+                a = [s[r][c] for r in range(4)]
+                s[0][c] = _mul(a[0], 14) ^ _mul(a[1], 11) ^ _mul(a[2], 13) ^ _mul(a[3], 9)
+                s[1][c] = _mul(a[0], 9) ^ _mul(a[1], 14) ^ _mul(a[2], 11) ^ _mul(a[3], 13)
+                s[2][c] = _mul(a[0], 13) ^ _mul(a[1], 9) ^ _mul(a[2], 14) ^ _mul(a[3], 11)
+                s[3][c] = _mul(a[0], 11) ^ _mul(a[1], 13) ^ _mul(a[2], 9) ^ _mul(a[3], 14)
+    return bytes(s[r][c] for c in range(4) for r in range(4))
+
+
+def _aes_cbc_decrypt_pure(key: bytes, iv: bytes, data: bytes) -> bytes:
+    w, nr = _key_expansion(key)
+    out = bytearray()
+    prev = iv
+    for i in range(0, len(data), 16):
+        block = data[i:i + 16]
+        dec = _decrypt_block(block, w, nr)
+        out += bytes(a ^ b for a, b in zip(dec, prev))
+        prev = block
+    return bytes(out)
+
+
 def _gf_mult(x: int, y: int) -> int:
     r = 0xE1 << 120
     z = 0
@@ -222,7 +296,7 @@ def _dpapi_decrypt(data: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 def _query(db_path: str, sql: str):
-    """Читает БД через временную копию (обходит блокировку открытым браузером)."""
+    """Read the DB via a temp copy (works around a lock held by the browser)."""
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     tmp.close()
     try:
@@ -294,7 +368,7 @@ _CHROMIUM_LOCAL = {
 
 
 def _chromium_dirs(browser: str, profile: Optional[str]):
-    """Возвращает (local_state_path, cookies_db_path) для браузера на Windows."""
+    """Return (local_state_path, cookies_db_path) for a browser on Windows."""
     if browser == "opera":
         base = os.path.join(os.environ.get("APPDATA", ""), "Opera Software", "Opera Stable")
         prof_dir = base
@@ -363,6 +437,142 @@ def read_chromium_windows(browser: str, profile: Optional[str], domains: List[st
     return out
 
 
+# --- Chromium на macOS / Linux (ключ из keychain/keyring + AES-CBC) ---
+
+def _strip_domain_hash(raw: bytes, host: str) -> bytes:
+    if raw[:32] == hashlib.sha256((host or "").encode()).digest():
+        return raw[32:]
+    return raw
+
+
+def _profile_dir(browser: str, base: str, profile: Optional[str]) -> str:
+    return base if browser == "opera" else os.path.join(base, profile or "Default")
+
+
+def _cookies_db_in(prof_dir: str) -> Optional[str]:
+    for c in (os.path.join(prof_dir, "Network", "Cookies"),
+              os.path.join(prof_dir, "Cookies")):
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def _read_cbc_cookies(db: str, domains: List[str], keys: dict) -> dict:
+    """Shared mac/linux reader: v10/v11 values via AES-128-CBC (IV=16 spaces)."""
+    iv = b" " * 16
+    rows = _query(db, "SELECT host_key, name, value, hex(encrypted_value) FROM cookies")
+    out = {}
+    for host, name, plain, enc_hex in rows:
+        if not _matches(host, domains):
+            continue
+        enc = bytes.fromhex(enc_hex) if enc_hex else b""
+        key = keys.get(enc[:3])
+        if enc[:3] in (b"v10", b"v11") and key:
+            try:
+                raw = _pkcs7_unpad(aes_cbc_decrypt(key, iv, enc[3:]))
+            except Exception:
+                continue
+            out[name] = _strip_domain_hash(raw, host).decode("utf-8", "replace")
+        elif not enc and plain:
+            out[name] = plain
+    return out
+
+
+_CHROMIUM_MAC = {
+    "chrome": "Google/Chrome", "chromium": "Chromium", "edge": "Microsoft Edge",
+    "brave": "BraveSoftware/Brave-Browser", "vivaldi": "Vivaldi",
+    "opera": "com.operasoftware.Opera", "whale": "Naver/Whale",
+}
+_MAC_KEYCHAIN = {
+    "chrome": ("Chrome Safe Storage", "Chrome"),
+    "chromium": ("Chromium Safe Storage", "Chromium"),
+    "edge": ("Microsoft Edge Safe Storage", "Microsoft Edge"),
+    "brave": ("Brave Safe Storage", "Brave"),
+    "vivaldi": ("Vivaldi Safe Storage", "Vivaldi"),
+    "opera": ("Opera Safe Storage", "Opera"),
+    "whale": ("Whale Safe Storage", "Whale"),
+}
+
+
+def _mac_chromium_key(browser: str) -> Optional[bytes]:
+    import subprocess
+    label, account = _MAC_KEYCHAIN.get(browser, (None, None))
+    if not label:
+        return None
+    try:
+        r = subprocess.run(
+            ["security", "find-generic-password", "-w", "-a", account, "-s", label],
+            capture_output=True, timeout=15)
+    except Exception:
+        return None
+    if r.returncode != 0 or not r.stdout:
+        return None
+    password = r.stdout.rstrip(b"\n")
+    return hashlib.pbkdf2_hmac("sha1", password, b"saltysalt", 1003, 16)
+
+
+def read_chromium_macos(browser: str, profile: Optional[str], domains: List[str]) -> dict:
+    base = _CHROMIUM_MAC.get(browser)
+    if not base:
+        raise NativeUnsupported(f"no macOS path for {browser}")
+    root = os.path.expanduser("~/Library/Application Support")
+    db = _cookies_db_in(_profile_dir(browser, os.path.join(root, base), profile))
+    if not db:
+        raise NativeUnsupported(f"{browser} data not found")
+    key = _mac_chromium_key(browser)
+    if not key:
+        raise EmberError(
+            f"could not read the {browser} key from the macOS Keychain "
+            "(you may need to allow access)")
+    return _read_cbc_cookies(db, domains, {b"v10": key, b"v11": key})
+
+
+_CHROMIUM_LINUX = {
+    "chrome": "google-chrome", "chromium": "chromium", "edge": "microsoft-edge",
+    "brave": "BraveSoftware/Brave-Browser", "vivaldi": "vivaldi", "opera": "opera",
+}
+_LINUX_APP = {
+    "chrome": "Chrome", "chromium": "Chromium", "edge": "Microsoft Edge",
+    "brave": "Brave", "vivaldi": "Vivaldi", "opera": "Opera",
+}
+
+
+def _linux_keyring_password(browser: str) -> Optional[bytes]:
+    try:
+        import secretstorage
+    except ImportError:
+        return None
+    label = f"{_LINUX_APP.get(browser, '')} Safe Storage"
+    try:
+        conn = secretstorage.dbus_init()
+        try:
+            collection = secretstorage.get_default_collection(conn)
+            for item in collection.get_all_items():
+                if item.get_label() == label:
+                    return item.get_secret()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    return None
+
+
+def read_chromium_linux(browser: str, profile: Optional[str], domains: List[str]) -> dict:
+    base = _CHROMIUM_LINUX.get(browser)
+    if not base:
+        raise NativeUnsupported(f"no Linux path for {browser}")
+    root = os.path.expanduser("~/.config")
+    db = _cookies_db_in(_profile_dir(browser, os.path.join(root, base), profile))
+    if not db:
+        raise NativeUnsupported(f"{browser} data not found")
+    # v10 — фиксированный пароль "peanuts"; v11 — пароль из системного keyring
+    key_v10 = hashlib.pbkdf2_hmac("sha1", b"peanuts", b"saltysalt", 1, 16)
+    keyring_pw = _linux_keyring_password(browser)
+    key_v11 = (hashlib.pbkdf2_hmac("sha1", keyring_pw, b"saltysalt", 1, 16)
+               if keyring_pw else None)
+    return _read_cbc_cookies(db, domains, {b"v10": key_v10, b"v11": key_v11})
+
+
 # ---------------------------------------------------------------------------
 # точка входа
 # ---------------------------------------------------------------------------
@@ -371,10 +581,15 @@ _CHROMIUM = set(_CHROMIUM_LOCAL) | {"opera"}
 
 
 def native_cookies(browser: str, profile: Optional[str], domains: List[str]) -> dict:
-    """Читает cookies своим ридером. NativeUnsupported — если комбинация
-    браузер+ОС нам не по силам (вызывающий код уходит в fallback)."""
+    """Read cookies with the built-in reader. NativeUnsupported if the
+    browser+OS combo is beyond us (the caller then uses a fallback)."""
     if browser == "firefox":
         return read_firefox(profile, domains)
     if browser in _CHROMIUM:
-        return read_chromium_windows(browser, profile, domains)
-    raise NativeUnsupported(f"no native reader for {browser}")
+        if sys.platform == "win32":
+            return read_chromium_windows(browser, profile, domains)
+        if sys.platform == "darwin":
+            return read_chromium_macos(browser, profile, domains)
+        if sys.platform.startswith("linux"):
+            return read_chromium_linux(browser, profile, domains)
+    raise NativeUnsupported(f"no native reader for {browser} on {sys.platform}")

@@ -1,14 +1,14 @@
-"""Instagram: посты, Reels, карусели.
+"""Instagram: posts, Reels, carousels.
 
-Самый нестабильный сервис — Instagram агрессивно блокирует анонимный
-доступ. Методы, по очереди (как у cobalt):
-1. GraphQL-запрос PolarisPostActionLoadPostQueryQuery (без авторизации);
-2. embed-страница /p/<код>/embed/captioned/;
-3. мобильный oembed API — отдаёт только превью-картинку и метаданные,
-   но работает даже там, где первые два метода закрыты.
+The flakiest service — Instagram aggressively blocks anonymous access.
+Methods, in order (like cobalt):
+1. GraphQL query PolarisPostActionLoadPostQueryQuery (no auth);
+2. embed page /p/<code>/embed/captioned/;
+3. mobile oembed API — returns only a preview image and metadata, but
+   works even where the first two are closed.
 
-Полное качество там, где всё закрыто, даёт передача cookies
-залогиненного аккаунта: ember.extract(url, cookies={"sessionid": ...}).
+Where everything is closed, full quality comes from passing logged-in
+account cookies: ember.extract(url, cookies={"sessionid": ...}).
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def _media_from_node(node: dict) -> Optional[Media]:
 
 
 def _from_embed(ctx: Context, shortcode: str) -> Optional[dict]:
-    """Fallback: парсим embed-страницу. Возвращает минимальный dict в том же формате."""
+    """Fallback: parse the embed page. Returns a minimal dict in the same shape."""
     r = ctx.get(
         f"https://www.instagram.com/p/{shortcode}/embed/captioned/",
         headers={"Referer": "https://www.instagram.com/"})
@@ -111,7 +111,7 @@ def _from_embed(ctx: Context, shortcode: str) -> Optional[dict]:
 
 
 def _from_oembed(ctx: Context, shortcode: str) -> Optional[dict]:
-    """Последний шанс: мобильный oembed. Только превью-картинка + метаданные."""
+    """Last resort: mobile oembed. Preview image + metadata only."""
     r = ctx.get(
         "https://i.instagram.com/api/v1/oembed/",
         params={"url": f"https://www.instagram.com/p/{shortcode}/"},

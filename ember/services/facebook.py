@@ -1,9 +1,9 @@
-"""Facebook: видео и Reels.
+"""Facebook: video and Reels.
 
-Метод — парсинг HTML публичной страницы: ссылки на mp4 лежат в полях
-browser_native_hd_url / browser_native_sd_url. Facebook агрессивно
-блокирует ботов, поэтому многие видео открываются только с cookies
-аккаунта: extract(url, cookies_from_browser="firefox") или cookies={...}.
+Method — parse the public page HTML: mp4 links live in the fields
+browser_native_hd_url / browser_native_sd_url. Facebook aggressively blocks
+bots, so many videos only open with account cookies:
+extract(url, cookies_from_browser="firefox") or cookies={...}.
 """
 
 from __future__ import annotations

@@ -1,23 +1,24 @@
-"""Извлечение cookies прямо из браузера — по аналогии с
-yt-dlp --cookies-from-browser.
+"""Read cookies straight from a browser — like yt-dlp --cookies-from-browser.
 
-Порядок предпочтений:
-1. свой ридер (_browser_cookies): Firefox (любая ОС) и Chromium-семейство
-   на Windows — без обязательных зависимостей;
-2. yt-dlp (если установлен) — покрывает то, что не умеет свой ридер
-   (например Chromium на macOS/Linux через системный keyring);
-3. browser_cookie3 — запасной вариант.
+Preference order:
+1. built-in reader (_browser_cookies): Firefox (any OS) and the Chromium
+   family on Windows/macOS/Linux — no required dependencies;
+2. yt-dlp (if installed) — covers what the built-in reader can't;
+3. browser_cookie3 — last resort.
 
-Возвращается обычный dict {name: value}. Fallback-бэкенды необязательные:
-если для непокрытой комбинации ни одного нет, поднимается EmberError.
+Returns a plain dict {name: value}. Fallback backends are optional: if none
+covers the combination, EmberError is raised.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from . import _browser_cookies as native
 from .errors import EmberError
+
+log = logging.getLogger(__name__)
 
 # домены, cookies которых имеет смысл тянуть под каждый сервис
 _DOMAIN_HINTS = {
@@ -40,8 +41,8 @@ _DOMAIN_HINTS = {
 
 
 def _via_native(browser: str, profile: Optional[str], domains) -> Optional[dict]:
-    """Свой ридер. None — если комбинация нам не по силам (нужен fallback).
-    EmberError (например, App-Bound Encryption) пробрасывается наружу."""
+    """Built-in reader. None if the combination is unsupported (need a
+    fallback). EmberError (e.g. App-Bound Encryption) propagates out."""
     try:
         return native.native_cookies(browser, profile, domains)
     except native.NativeUnsupported:
@@ -96,20 +97,21 @@ def cookies_from_browser(
     service: Optional[str] = None,
     profile: Optional[str] = None,
 ) -> dict:
-    """Достаёт cookies из указанного браузера.
+    """Read cookies from the given browser.
 
     Args:
         browser: "firefox", "vivaldi", "chrome", "edge", "brave", "opera", ...
-        service: имя сервиса Ember — тогда берутся только его домены.
-                 Если None, тянутся домены всех сервисов.
-        profile: имя профиля браузера.
+        service: an Ember service name — only its domains are read.
+                 If None, domains of all services are read.
+        profile: browser profile name.
 
     Returns:
-        dict {имя_cookie: значение}.
+        dict {cookie_name: value}.
 
     Raises:
-        EmberError: комбинацию не покрыл свой ридер, а fallback-бэкендов
-                    (yt-dlp / browser_cookie3) нет; либо браузер под ABE.
+        EmberError: the combination is uncovered by the built-in reader and no
+                    fallback backend (yt-dlp / browser_cookie3) is installed;
+                    or the browser is under App-Bound Encryption.
     """
     browser = browser.lower().strip()
     if service:
@@ -118,10 +120,15 @@ def cookies_from_browser(
         domains = [d for lst in _DOMAIN_HINTS.values() for d in lst]
 
     result = _via_native(browser, profile, domains)
+    backend = "native"
     if result is None:
         result = _via_ytdlp(browser, profile, domains)
+        backend = "yt-dlp"
     if result is None:
         result = _via_browser_cookie3(browser, domains)
+        backend = "browser_cookie3"
+    if result is not None:
+        log.info("cookies from %s via %s: %d cookies", browser, backend, len(result))
     if result is None:
         raise EmberError(
             f"could not read cookies from {browser} on this OS: our reader "

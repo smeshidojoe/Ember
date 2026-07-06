@@ -1,8 +1,8 @@
-"""Vimeo: видео.
+"""Vimeo: video.
 
-Метод — публичный player config (player.vimeo.com/video/<id>/config),
-тот же JSON, что использует встроенный плеер. Без OAuth. Отдаёт либо
-прогрессивные mp4 (выбираем лучшее качество), либо HLS-мастер (.m3u8).
+Method — the public player config (player.vimeo.com/video/<id>/config),
+the same JSON the built-in player uses. No OAuth. Returns either progressive
+mp4s (we pick the best quality) or an HLS master (.m3u8).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, MediaVariant, Result, safe_filename
+from ..models import Media, MediaVariant, Result, Subtitle, safe_filename
 
 SERVICE = "vimeo"
 
@@ -19,6 +19,20 @@ PATTERNS = [
     re.compile(r"https?://(?:www\.)?vimeo\.com/(?:channels/[\w]+/|groups/[\w]+/videos/|album/\d+/video/)?(\d+)(?:/(\w+))?"),
     re.compile(r"https?://player\.vimeo\.com/video/(\d+)(?:\?h=(\w+))?"),
 ]
+
+
+def _subtitles(text_tracks: list) -> list:
+    subs = []
+    for t in text_tracks:
+        u = t.get("url")
+        if not u:
+            continue
+        if u.startswith("//"):
+            u = "https:" + u
+        elif u.startswith("/"):
+            u = "https://vimeo.com" + u
+        subs.append(Subtitle(lang=t.get("lang") or "sub", url=u, ext="vtt"))
+    return subs
 
 
 def _thumbnail(video: dict):
@@ -61,7 +75,9 @@ def extract(ctx: Context, url: str) -> Result:
     author = (video.get("owner") or {}).get("name")
     thumb = _thumbnail(video)
     hint = safe_filename(f"vimeo_{video_id}_{title or ''}")
-    files = ((data.get("request") or {}).get("files")) or {}
+    request = data.get("request") or {}
+    files = request.get("files") or {}
+    subs = _subtitles(request.get("text_tracks") or [])
 
     progressive = files.get("progressive") or []
     if progressive:
@@ -75,7 +91,7 @@ def extract(ctx: Context, url: str) -> Result:
             media=[Media(kind="video", url=best["url"], ext="mp4",
                          quality=best.get("quality"), variants=variants)],
             title=title, author=author, source_url=url, filename_hint=hint,
-            thumbnail=thumb)
+            thumbnail=thumb, subtitles=subs)
 
     hls = (files.get("hls") or {}).get("cdns") or {}
     for cdn in hls.values():
@@ -84,6 +100,6 @@ def extract(ctx: Context, url: str) -> Result:
                 service=SERVICE, kind="single",
                 media=[Media(kind="video", url=cdn["url"], ext="m3u8")],
                 title=title, author=author, source_url=url, filename_hint=hint,
-                thumbnail=thumb)
+                thumbnail=thumb, subtitles=subs)
 
     raise ExtractionError("Vimeo response has neither mp4 nor HLS stream", SERVICE)

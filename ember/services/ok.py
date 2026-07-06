@@ -1,7 +1,7 @@
-"""OK.ru (Одноклассники): видео.
+"""OK.ru (Odnoklassniki): video.
 
-Метод — парсинг data-options из HTML страницы видео. Внутри дважды
-завёрнутый JSON с массивом mp4-потоков разного качества.
+Method — parse data-options from the video page HTML. Inside is a
+double-wrapped JSON with an array of mp4 streams of different qualities.
 """
 
 from __future__ import annotations

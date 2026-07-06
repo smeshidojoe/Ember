@@ -1,9 +1,9 @@
-"""TikTok: видео, фото-посты (слайдшоу) и музыка.
+"""TikTok: video, photo posts (slideshows) and music.
 
-Метод (как у cobalt): открываем страницу видео обычным браузерным
-User-Agent и парсим JSON из тега
+Method (like cobalt): open the video page with a normal browser User-Agent
+and parse the JSON from the tag
 <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__">.
-Скачивание с CDN требует тех же cookies — они кладутся в http_headers.
+Downloading from the CDN needs the same cookies — placed in http_headers.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, safe_filename
+from ..models import Media, Result, Subtitle, safe_filename
 
 SERVICE = "tiktok"
 
@@ -103,6 +103,13 @@ def extract(ctx: Context, url: str) -> Result:
     if video.get("height"):
         quality = f"{video['height']}p"
 
+    subtitles = []
+    for sub in video.get("subtitleInfos") or []:
+        if "webvtt" in (sub.get("Format") or "").lower() and sub.get("Url"):
+            subtitles.append(Subtitle(
+                lang=sub.get("LanguageCodeName") or sub.get("LanguageID") or "sub",
+                url=sub["Url"], ext="vtt"))
+
     return Result(
         service=SERVICE,
         kind="single",
@@ -114,4 +121,5 @@ def extract(ctx: Context, url: str) -> Result:
         source_url=url,
         filename_hint=hint,
         thumbnail=video.get("cover") or video.get("originCover"),
+        subtitles=subtitles,
     )

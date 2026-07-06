@@ -1,7 +1,7 @@
-"""Newgrounds: видео (portal) и аудио (audio/listen).
+"""Newgrounds: video (portal) and audio (audio/listen).
 
-Видео: JSON-эндпоинт /portal/video/<id> (нужен заголовок
-X-Requested-With). Аудио: параметры вшиты в HTML страницы прослушивания.
+Video: JSON endpoint /portal/video/<id> (needs an X-Requested-With header).
+Audio: parameters embedded in the listen page HTML.
 """
 
 from __future__ import annotations

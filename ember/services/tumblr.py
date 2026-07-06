@@ -1,7 +1,7 @@
-"""Tumblr: видео и аудио из постов.
+"""Tumblr: video and audio from posts.
 
-Метод — публичный мобильный API (api-http2.tumblr.com) с встроенным
-API-ключом (тот же, что зашит в приложении и используется cobalt).
+Method — the public mobile API (api-http2.tumblr.com) with a built-in API
+key (the same one embedded in the app and used by cobalt).
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def _parse(url: str):
 
 
 def _iter_content(element: dict):
-    """Контент поста + контент репостнутого трейла (как в cobalt)."""
+    """Post content + reblogged trail content (like cobalt)."""
     yield from element.get("content") or []
     for trail in element.get("trail") or []:
         yield from trail.get("content") or []

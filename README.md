@@ -132,11 +132,15 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | Flag | Meaning |
 |---|---|
 | `-d`, `--download` | enable downloading (without it — only print links) |
-| `-o`, `--output NAME` | output file name without extension (default: from the site); implies download |
+| `-o`, `--output NAME` | file name without extension, or a template: `%(title)s`/`%(author)s`/`%(service)s`/`%(id)s`; implies download |
 | `-p`, `--path DIR` | target folder (default: current folder); implies download |
+| `-a`, `--batch-file FILE` | read links from a file (one per line, `#` comments; `-` = stdin) |
+| `-F`, `--list-formats` | list available qualities and exit (no download) |
+| `-v`, `--verbose` | log to stderr; `-vv` for debug |
 | `--json` | print metadata as JSON |
 | `--max-height N` | cap quality by height (e.g. `720`) |
 | `--audio-only` | keep audio only (needs ffmpeg); implies download |
+| `--subs` | also download subtitle tracks; implies download |
 | `--concurrency N` | parallel HLS segments (default `1`) |
 | `--embed-metadata` (`--metadata`) | write title/author into the file (needs ffmpeg); implies download |
 | `--playlist` | treat as a set (SoundCloud sets) |
@@ -151,12 +155,12 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 Terminal help — `ember --help` or `ember -h`:
 
 ```
-usage: ember [-h] [--json] [--timeout SEC] [-d] [-o NAME] [-p DIR]
-             [--max-height N] [--audio-only] [--concurrency N]
-             [--embed-metadata] [--playlist] [--proxy URL]
+usage: ember [-h] [-a FILE] [--json] [-F] [-v] [--timeout SEC] [-d]
+             [-o NAME] [-p DIR] [--max-height N] [--audio-only] [--subs]
+             [--concurrency N] [--embed-metadata] [--playlist] [--proxy URL]
              [--cookies "name=value; ..."] [--cookies-file cookies.txt]
              [--cookies-from-browser BROWSER] [--browser-profile PROFILE]
-             url
+             [url]
 ```
 
 ## How it works

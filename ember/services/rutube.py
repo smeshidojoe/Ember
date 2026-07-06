@@ -1,7 +1,7 @@
-"""Rutube: видео (HLS).
+"""Rutube: video (HLS).
 
-Метод — публичный API play/options, отдаёт HLS-мастер (.m3u8).
-Приватные видео требуют ключ ?p=<key> из ссылки.
+Method — the public play/options API, returns an HLS master (.m3u8).
+Private videos require the ?p=<key> from the link.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, safe_filename
+from ..models import Media, Result, Subtitle, safe_filename
 
 SERVICE = "rutube"
 
@@ -46,8 +46,15 @@ def extract(ctx: Context, url: str) -> Result:
     thumb = data.get("thumbnail_url") or data.get("picture_url")
     hint = safe_filename(f"rutube_{video_id}_{title or ''}")
 
+    subtitles = []
+    for cap in data.get("captions") or []:
+        if cap.get("file"):
+            subtitles.append(Subtitle(
+                lang=cap.get("code") or cap.get("langTitle") or "sub",
+                url=cap["file"], ext="vtt"))
+
     return Result(
         service=SERVICE, kind="single",
         media=[Media(kind="video", url=m3u8, ext="m3u8")],
         title=title, author=author, source_url=url, filename_hint=hint,
-        thumbnail=thumb)
+        thumbnail=thumb, subtitles=subtitles)

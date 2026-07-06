@@ -1,8 +1,7 @@
-"""Pinterest: пины с видео или картинкой.
+"""Pinterest: pins with video or image.
 
-Метод — парсинг HTML страницы пина: видео лежит на v1.pinimg.com
-(mp4 или HLS), картинки — на i.pinimg.com. Короткие ссылки pin.it
-раскрываются редиректом.
+Method — parse the pin page HTML: video lives on v1.pinimg.com (mp4 or
+HLS), images on i.pinimg.com. Short pin.it links are resolved via redirect.
 """
 
 from __future__ import annotations

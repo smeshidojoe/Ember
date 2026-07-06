@@ -133,11 +133,15 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | Ключ | Значение |
 |---|---|
 | `-d`, `--download` | включить скачивание (без него — только показать ссылки) |
-| `-o`, `--output NAME` | имя файла без расширения (по умолчанию — с сайта); включает загрузку |
+| `-o`, `--output NAME` | имя файла без расширения или шаблон: `%(title)s`/`%(author)s`/`%(service)s`/`%(id)s`; включает загрузку |
 | `-p`, `--path DIR` | папка назначения (по умолчанию — текущая); включает загрузку |
+| `-a`, `--batch-file FILE` | список ссылок из файла (по одной на строку, `#` — комментарий; `-` = stdin) |
+| `-F`, `--list-formats` | показать доступные качества и выйти (без загрузки) |
+| `-v`, `--verbose` | логи в stderr; `-vv` — debug |
 | `--json` | вывести метаданные в JSON |
 | `--max-height N` | ограничить качество по высоте (напр. `720`) |
 | `--audio-only` | сохранить только звук (нужен ffmpeg); включает загрузку |
+| `--subs` | также скачать дорожки субтитров; включает загрузку |
 | `--concurrency N` | параллельных сегментов HLS (по умолчанию `1`) |
 | `--embed-metadata` (`--metadata`) | вписать название/автора в файл (нужен ffmpeg); включает загрузку |
 | `--playlist` | обработать как набор (SoundCloud sets) |
@@ -152,12 +156,12 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 Справка в терминале — `ember --help` или `ember -h`:
 
 ```
-usage: ember [-h] [--json] [--timeout SEC] [-d] [-o NAME] [-p DIR]
-             [--max-height N] [--audio-only] [--concurrency N]
-             [--embed-metadata] [--playlist] [--proxy URL]
+usage: ember [-h] [-a FILE] [--json] [-F] [-v] [--timeout SEC] [-d]
+             [-o NAME] [-p DIR] [--max-height N] [--audio-only] [--subs]
+             [--concurrency N] [--embed-metadata] [--playlist] [--proxy URL]
              [--cookies "name=value; ..."] [--cookies-file cookies.txt]
              [--cookies-from-browser BROWSER] [--browser-profile PROFILE]
-             url
+             [url]
 ```
 
 ## Как это работает

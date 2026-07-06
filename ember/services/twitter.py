@@ -1,10 +1,10 @@
-"""Twitter/X: видео, гифки и фото из твитов.
+"""Twitter/X: video, GIFs and photos from tweets.
 
-Два метода, по очереди:
-1. Syndication API (cdn.syndication.twimg.com) — без авторизации,
-   токен вычисляется из id твита. Быстро и стабильно.
-2. GraphQL TweetResultByRestId с гостевым токеном — как у cobalt,
-   работает когда syndication не отдаёт твит.
+Two methods, in order:
+1. Syndication API (cdn.syndication.twimg.com) — no auth, the token is
+   computed from the tweet id. Fast and stable.
+2. GraphQL TweetResultByRestId with a guest token — like cobalt, works
+   when syndication doesn't return the tweet.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ _GRAPHQL_FEATURES = {
 
 
 def _syndication_token(tweet_id: str) -> str:
-    """Порт JS-выражения ((id/1e15)*PI).toString(36).replace(/(0+|\\.)/g,'')."""
+    """Port of the JS expression ((id/1e15)*PI).toString(36).replace(/(0+|\\.)/g,'')."""
     value = (int(tweet_id) / 1e15) * math.pi
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"
     integer = int(value)
@@ -103,7 +103,7 @@ def _cookie_value(ctx: Context, name: str):
 
 
 def has_auth_cookies(ctx: Context) -> bool:
-    """True, если переданы cookies залогиненного аккаунта X."""
+    """True if logged-in X account cookies were provided."""
     return bool(_cookie_value(ctx, "auth_token") and _cookie_value(ctx, "ct0"))
 
 
@@ -152,7 +152,7 @@ def _from_graphql(ctx: Context, tweet_id: str):
 
 
 def _append_entry(entry: dict, media_items: list, thumbs: list) -> None:
-    """Добавляет медиа из mediaDetails/extended_entities с вариантами качества."""
+    """Append media from mediaDetails/extended_entities with quality variants."""
     etype = entry.get("type")
     if etype in ("video", "animated_gif"):
         info = entry.get("video_info") or {}

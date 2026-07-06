@@ -1,9 +1,9 @@
-"""Reddit: видео (v.redd.it), гифки, картинки и галереи.
+"""Reddit: video (v.redd.it), GIFs, images and galleries.
 
-Метод (как у cobalt): публичный JSON-эндпоинт
-https://www.reddit.com/comments/<id>.json — без авторизации.
-У v.redd.it видео и аудио лежат отдельными DASH-файлами, поэтому
-для видео со звуком возвращается kind="merge" (нужен ffmpeg).
+Method (like cobalt): the public JSON endpoint
+https://www.reddit.com/comments/<id>.json — no auth.
+On v.redd.it, video and audio are separate DASH files, so video-with-sound
+returns kind="merge" (needs ffmpeg).
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def _resolve_post_id(ctx: Context, url: str) -> str:
 
 
 def _find_audio(ctx: Context, fallback_url: str) -> str:
-    """Подбирает URL аудиодорожки для v.redd.it (как cobalt: перебор HEAD)."""
+    """Find the audio track URL for v.redd.it (like cobalt: try HEADs)."""
     base = fallback_url.rsplit("/", 1)[0]
     for candidate in (
         f"{base}/DASH_AUDIO_128.mp4",

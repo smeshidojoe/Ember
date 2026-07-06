@@ -1,27 +1,27 @@
-"""Иерархия ошибок Ember.
+"""Ember error hierarchy.
 
-Хост-программе достаточно ловить EmberError: любая ошибка библиотеки —
-её подкласс. Это удобно для fallback на yt-dlp.
+A host app only needs to catch EmberError: every library error is a
+subclass. Convenient for falling back to yt-dlp.
 """
 
 
 class EmberError(Exception):
-    """Базовая ошибка Ember."""
+    """Base Ember error."""
 
 
 class UnsupportedUrlError(EmberError):
-    """Ссылка не относится ни к одному поддерживаемому сервису."""
+    """The URL does not match any supported service."""
 
 
 class NetworkError(EmberError):
-    """Сетевая ошибка: таймаут, обрыв соединения, HTTP 5xx и т.п."""
+    """Network error: timeout, dropped connection, HTTP 5xx, etc."""
 
 
 class ExtractionError(EmberError):
-    """Сервис ответил, но извлечь медиа не удалось.
+    """The service responded but media could not be extracted.
 
-    Типичные причины: пост удалён/приватный, сервис изменил формат
-    страницы, требуется авторизация (cookies).
+    Common causes: post deleted/private, the service changed its page
+    format, or authentication (cookies) is required.
     """
 
     def __init__(self, message: str, service: str = ""):

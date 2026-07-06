@@ -1,8 +1,8 @@
-"""Простой кэш на диск с TTL — для значений, которые дорого получать
-каждый запуск (client_id SoundCloud, анонимный токен VK).
+"""Simple on-disk cache with TTL — for values that are expensive to fetch
+every run (SoundCloud client_id, VK anonymous token).
 
-Один JSON-файл в пользовательском каталоге кэша. Без зависимостей,
-безопасно к битому файлу (просто игнорируется).
+A single JSON file in the user cache directory. No dependencies; a corrupt
+file is safely ignored.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def invalidate(key: str) -> None:
 
 
 def get_or_set(key: str, ttl: float, producer: Callable[[], Any]) -> Any:
-    """Вернуть закэшированное значение или вычислить, сохранить и вернуть."""
+    """Return the cached value, or compute it, store it, and return it."""
     cached = get(key)
     if cached is not None:
         return cached

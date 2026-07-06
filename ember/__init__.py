@@ -1,14 +1,22 @@
-"""Ember — извлечение прямых ссылок на медиа из соцсетей.
+"""Ember — extract direct media links from social platforms.
 
-Аналог cobalt (imputnet/cobalt) в виде встраиваемой Python-библиотеки.
-Поддерживаемые сервисы: TikTok, Twitter/X, Instagram, Reddit.
+An embeddable, cobalt-like (imputnet/cobalt) Python library.
 
-Использование:
+Usage:
     import ember
     result = ember.extract("https://www.tiktok.com/@user/video/123...")
     for m in result.media:
         print(m.kind, m.url)
+
+Logging: the package logs to the "ember" logger and is silent by default
+(NullHandler). To see logs from your app:
+    import logging; logging.basicConfig(); logging.getLogger("ember").setLevel(logging.INFO)
 """
+
+import logging as _logging
+
+# best practice: a library must not force output — silent by default
+_logging.getLogger("ember").addHandler(_logging.NullHandler())
 
 from .errors import (
     EmberError,
@@ -19,11 +27,11 @@ from .errors import (
 from .cookies import cookies_from_browser
 from .download import (DownloadProgress, available_qualities, download,
                        download_media, ffmpeg_available)
-from .models import Media, MediaVariant, Playlist, Result
+from .models import Media, MediaVariant, Playlist, Result, Subtitle
 from .router import (can_extract, extract, extract_playlist, supported_services,
                      supports_playlist)
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "extract",
@@ -41,6 +49,7 @@ __all__ = [
     "Playlist",
     "Result",
     "Media",
+    "Subtitle",
     "EmberError",
     "UnsupportedUrlError",
     "NetworkError",

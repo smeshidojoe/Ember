@@ -64,3 +64,32 @@ def test_parse_media_fmp4():
 def test_looks_like_media_playlist():
     assert hls.looks_like_media_playlist(MEDIA_TS)
     assert not hls.looks_like_media_playlist(MASTER)
+
+
+MEDIA_ENC = """#EXTM3U
+#EXT-X-MEDIA-SEQUENCE:7
+#EXT-X-KEY:METHOD=AES-128,URI="k.bin",IV=0x00000000000000000000000000000009
+#EXTINF:6,
+s0.ts
+#EXT-X-ENDLIST
+"""
+
+MEDIA_LIVE = """#EXTM3U
+#EXT-X-TARGETDURATION:6
+#EXTINF:6,
+s0.ts
+"""
+
+
+def test_parse_media_encrypted():
+    md = hls.parse_media(MEDIA_ENC, "https://cdn.example.com/v/p.m3u8")
+    assert md.key_method == "AES-128"
+    assert md.key_uri.endswith("/v/k.bin")
+    assert md.key_iv == bytes.fromhex("00000000000000000000000000000009")
+    assert md.media_sequence == 7
+    assert not md.is_live
+
+
+def test_parse_media_live_detection():
+    assert hls.parse_media(MEDIA_LIVE, "https://x/p.m3u8").is_live
+    assert not hls.parse_media(MEDIA_TS, "https://x/p.m3u8").is_live

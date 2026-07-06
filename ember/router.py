@@ -1,4 +1,4 @@
-"""Точка входа: определяет сервис по URL и запускает нужный извлекатель."""
+"""Entry point: pick the service by URL and run the matching extractor."""
 
 from __future__ import annotations
 
@@ -6,10 +6,14 @@ from typing import List, Optional
 
 import requests
 
+import logging
+
 from .cookies import cookies_from_browser as _cookies_from_browser
 from .errors import EmberError, UnsupportedUrlError
 from .http import make_context
 from .models import Playlist, Result
+
+log = logging.getLogger(__name__)
 from .services import (bluesky, facebook, instagram, newgrounds, ok, pinterest,
                        reddit, rutube, soundcloud, tiktok, tumblr, twitch,
                        twitter, vimeo, vk)
@@ -22,7 +26,7 @@ _SERVICES = [
 
 
 def supported_services() -> List[str]:
-    """Список поддерживаемых сервисов."""
+    """List of supported service names."""
     return [s.SERVICE for s in _SERVICES]
 
 
@@ -35,7 +39,7 @@ def _match_service(url: str):
 
 
 def can_extract(url: str) -> bool:
-    """True, если ссылку стоит отдавать Ember (иначе — вашему yt-dlp)."""
+    """True if the URL should go to Ember (otherwise to your yt-dlp)."""
     return _match_service(url.strip()) is not None
 
 
@@ -49,27 +53,27 @@ def extract(
     browser_profile: Optional[str] = None,
     session: Optional[requests.Session] = None,
 ) -> Result:
-    """Извлекает прямые ссылки на медиа и метаданные по URL поста.
+    """Extract direct media links and metadata from a post URL.
 
     Args:
-        url: ссылка на пост (TikTok, Twitter/X, Instagram, Reddit).
-        timeout: таймаут каждого HTTP-запроса, секунды.
-        proxies: прокси в формате requests, например {"https": "http://..."}.
-        cookies: cookies для сервиса вручную (dict {имя: значение}).
-        cookies_from_browser: имя браузера ("chrome", "firefox", "edge",
-            "brave", ...) — cookies возьмутся автоматически, как в
-            yt-dlp --cookies-from-browser. Нужен установленный yt-dlp
-            или browser_cookie3.
-        browser_profile: профиль браузера для cookies_from_browser.
-        session: своя requests.Session, если нужен полный контроль.
+        url: post link (TikTok, Twitter/X, Instagram, Reddit, ...).
+        timeout: per-request timeout, seconds.
+        proxies: requests-style proxies, e.g. {"https": "http://..."}.
+        cookies: manual cookies for the service (dict {name: value}).
+        cookies_from_browser: browser name ("chrome", "firefox", "edge",
+            "brave", ...) — cookies are read automatically, like
+            yt-dlp --cookies-from-browser. Uses the built-in reader,
+            falling back to yt-dlp / browser_cookie3.
+        browser_profile: browser profile for cookies_from_browser.
+        session: your own requests.Session for full control.
 
     Returns:
-        Result со списком media (прямые URL + заголовки для скачивания).
+        Result with a media list (direct URLs + download headers).
 
     Raises:
-        UnsupportedUrlError: сервис не поддерживается — используйте fallback.
-        NetworkError: сетевая проблема.
-        ExtractionError: пост недоступен или сервис изменил формат.
+        UnsupportedUrlError: service not supported — use a fallback.
+        NetworkError: network problem.
+        ExtractionError: post unavailable or the service changed its format.
     """
     url = url.strip()
     service = _match_service(url)
@@ -78,8 +82,10 @@ def extract(
             f"unsupported link: {url}. "
             f"Supported: {', '.join(supported_services())}")
 
+    log.info("extract: %s -> service=%s", url, service.SERVICE)
     ctx = make_context(timeout=timeout, proxies=proxies, session=session)
     if cookies_from_browser:
+        log.debug("loading cookies from browser %s", cookies_from_browser)
         ctx.session.cookies.update(
             _cookies_from_browser(cookies_from_browser,
                                   service=service.SERVICE,
@@ -90,7 +96,7 @@ def extract(
 
 
 def supports_playlist(url: str) -> bool:
-    """True, если для ссылки доступно извлечение плейлиста."""
+    """True if playlist extraction is available for the URL."""
     service = _match_service(url.strip())
     return service is not None and hasattr(service, "extract_playlist")
 
@@ -105,10 +111,10 @@ def extract_playlist(
     browser_profile: Optional[str] = None,
     session: Optional[requests.Session] = None,
 ) -> Playlist:
-    """Извлекает плейлист/набор по ссылке (пока: SoundCloud sets).
+    """Extract a playlist/set from a URL (currently: SoundCloud sets).
 
-    Для одиночной ссылки вернёт Playlist с одним элементом.
-    Параметры — те же, что у extract().
+    For a single link returns a Playlist with one entry.
+    Same parameters as extract().
     """
     url = url.strip()
     service = _match_service(url)

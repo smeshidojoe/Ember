@@ -23,6 +23,7 @@ BROWSERS = ["brave", "chrome", "chromium", "edge", "firefox",
 # options that take a value (can accidentally swallow the URL) + example values
 _VALUE_OPTS = {
     "-o": "myfile", "--output": "myfile", "-p": "downloads", "--path": "downloads",
+    "-a": "links.txt", "--batch-file": "links.txt",
     "--max-height": "720", "--concurrency": "6", "--timeout": "20",
     "--proxy": "http://host:port", "--cookies": '"a=1; b=2"',
     "--cookies-file": "cookies.txt", "--cookies-from-browser": "firefox",
@@ -92,6 +93,8 @@ def _print_result(result) -> None:
         qs = available_qualities(m) if m.variants else []
         if qs:
             print(f"     qualities: {qs}")
+    if result.subtitles:
+        print(f"subs:     {', '.join(s.lang for s in result.subtitles)}")
     if result.requires_merge:
         print("! video and audio are separate — downloading needs ffmpeg")
 
@@ -138,22 +141,30 @@ class _Parser(argparse.ArgumentParser):
 def _build_parser() -> argparse.ArgumentParser:
     p = _Parser(prog="ember",
                 description="Extract and download media (a cobalt-like library)")
-    p.add_argument("url", help="link to a post / track / video")
+    p.add_argument("url", nargs="?", help="link to a post / track / video")
+    p.add_argument("-a", "--batch-file", metavar="FILE",
+                   help="read links from a file (one per line, '#' comments; '-' = stdin)")
     p.add_argument("--json", action="store_true", help="print metadata as JSON")
+    p.add_argument("-F", "--list-formats", action="store_true",
+                   help="list available qualities and exit (no download)")
+    p.add_argument("-v", "--verbose", action="count", default=0,
+                   help="log to stderr; -vv for debug")
     p.add_argument("--timeout", type=float, default=15.0, metavar="SEC",
                    help="per-request timeout, seconds (default 15)")
     # download
     p.add_argument("-d", "--download", action="store_true",
                    help="download the media (otherwise only links are shown)")
     p.add_argument("-o", "--output", metavar="NAME",
-                   help="output file name without extension "
-                        "(default: taken from the site); implies --download")
+                   help="output file name without extension, or a template with "
+                        "%%(title)s/%%(author)s/%%(service)s/%%(id)s; implies --download")
     p.add_argument("-p", "--path", metavar="DIR",
                    help="target folder (default: current folder); implies --download")
     p.add_argument("--max-height", type=int, metavar="N",
                    help="cap quality by height, e.g. 720")
     p.add_argument("--audio-only", action="store_true",
                    help="keep audio only (needs ffmpeg); implies --download")
+    p.add_argument("--subs", action="store_true",
+                   help="also download subtitle tracks; implies --download")
     p.add_argument("--concurrency", type=int, default=1, metavar="N",
                    help="parallel HLS segments (default 1)")
     p.add_argument("--embed-metadata", "--metadata", action="store_true",
@@ -177,7 +188,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _report_error(msg: str, prefix: str = "error") -> None:
-    """Печатает ошибку и, если уместно, подсказку с CLI-флагами (не с Python-API)."""
+    """Print an error and, when relevant, a hint with CLI flags (not Python API)."""
     print(f"{prefix}: {msg}", file=sys.stderr)
     low = msg.lower()
     if "cookie" in low and "could not read cookies" not in low and "app-bound" not in low:
@@ -188,8 +199,69 @@ def _report_error(msg: str, prefix: str = "error") -> None:
         print("hint: try another IP with  --proxy http://host:port", file=sys.stderr)
 
 
+def _setup_logging(verbose: int) -> None:
+    if verbose <= 0:
+        return
+    import logging
+    h = logging.StreamHandler(sys.stderr)
+    h.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
+    lg = logging.getLogger("ember")
+    lg.addHandler(h)
+    lg.setLevel(logging.DEBUG if verbose >= 2 else logging.INFO)
+
+
+def _read_batch(path: str) -> list:
+    src = sys.stdin if path == "-" else open(path, encoding="utf-8", errors="replace")
+    try:
+        urls = []
+        for line in src:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                urls.append(line)
+        return urls
+    finally:
+        if src is not sys.stdin:
+            src.close()
+
+
+def _render_name(template: str, result) -> str:
+    if "%(" not in template:
+        return template
+    fields = {"title": result.title or "", "author": result.author or "",
+              "uploader": result.author or "", "service": result.service,
+              "id": result.filename_hint or ""}
+    try:
+        return template % fields
+    except (KeyError, ValueError):
+        return template
+
+
+def _list_formats(result) -> None:
+    print(f"# {result.service}: {(result.title or result.filename_hint)[:70]}")
+    for i, m in enumerate(result.media, 1):
+        qs = available_qualities(m)
+        label = ", ".join(f"{h}p" for h in qs) if qs else (m.quality or "single")
+        print(f"  {i}. {m.kind} .{m.ext}: {label}")
+    for s in result.subtitles:
+        print(f"  sub: {s.lang} ({s.ext})")
+
+
 def main() -> int:
     args = _build_parser().parse_args()
+    _setup_logging(args.verbose)
+
+    urls = []
+    if args.url:
+        urls.append(args.url)
+    if args.batch_file:
+        try:
+            urls += _read_batch(args.batch_file)
+        except OSError as e:
+            print(f"could not read batch file: {e}", file=sys.stderr)
+            return 1
+    if not urls:
+        print("error: provide a URL or --batch-file FILE", file=sys.stderr)
+        return 2
 
     cookies = {}
     if args.cookies_file:
@@ -206,56 +278,69 @@ def main() -> int:
                   cookies_from_browser=args.cookies_from_browser,
                   browser_profile=args.browser_profile)
 
-    do_download = (args.download or args.output or args.path
-                   or args.audio_only or args.embed_metadata)
-
-    try:
-        if args.playlist or (do_download and supports_playlist(args.url)
-                             and "/sets/" in args.url):
-            playlist = extract_playlist(args.url, **common)
-            results = playlist.entries
-            print(f"playlist: {playlist.title or '-'} ({len(results)} items)")
-        else:
-            results = [extract(args.url, **common)]
-    except EmberError as e:
-        _report_error(str(e))
-        return 1
-
-    if args.json:
-        import json
-        payload = [r.to_dict() for r in results]
-        print(json.dumps(payload if len(payload) > 1 else payload[0],
-                         ensure_ascii=False, indent=2))
-        return 0
-
-    if not do_download:
-        for r in results:
-            _print_result(r)
-            if len(results) > 1:
-                print("-" * 40)
-        return 0
-
-    out_dir = args.path or "."
-    # custom name applies only to a single result (not to a whole playlist)
-    name = args.output if len(results) == 1 else None
-    dl_ctx = make_context(timeout=args.timeout, proxies=proxies)
+    do_download = (args.download or args.output or args.path or args.audio_only
+                   or args.embed_metadata or args.subs)
+    dl_ctx = make_context(timeout=args.timeout, proxies=proxies) if do_download else None
     cb = _make_progress_printer()
-    for r in results:
-        print(f"downloading: {(r.title or r.filename_hint)[:70]}")
+    rc = 0
+
+    for url in urls:
         try:
-            paths = download(r, out_dir, filename=name, ctx=dl_ctx,
-                             max_height=args.max_height,
-                             concurrency=args.concurrency, on_progress=cb,
-                             audio_only=args.audio_only,
-                             embed_metadata=args.embed_metadata)
+            if args.playlist or (do_download and supports_playlist(url)
+                                 and "/sets/" in url):
+                playlist = extract_playlist(url, **common)
+                results = playlist.entries
+                print(f"playlist: {playlist.title or '-'} ({len(results)} items)")
+            else:
+                results = [extract(url, **common)]
         except EmberError as e:
-            print()
-            _report_error(str(e), prefix="  error")
+            _report_error(str(e))
+            rc = 1
             continue
-        print("\r" + " " * 40, end="")
-        for p in paths:
-            print(f"\r  saved: {p}")
-    return 0
+
+        if args.json:
+            import json
+            payload = [r.to_dict() for r in results]
+            print(json.dumps(payload if len(payload) > 1 else payload[0],
+                             ensure_ascii=False, indent=2))
+            continue
+        if args.list_formats:
+            for r in results:
+                _list_formats(r)
+            continue
+        if not do_download:
+            for r in results:
+                _print_result(r)
+                if len(results) > 1 or len(urls) > 1:
+                    print("-" * 40)
+            continue
+
+        out_dir = args.path or "."
+        single = len(results) == 1 and len(urls) == 1
+        for r in results:
+            print(f"downloading: {(r.title or r.filename_hint)[:70]}")
+            if args.output and "%(" in args.output:
+                name = _render_name(args.output, r)      # шаблон — на каждый результат
+            elif args.output and single:
+                name = args.output                        # литеральное имя — только один файл
+            else:
+                name = None                               # иначе имя с сайта
+            try:
+                paths = download(r, out_dir, filename=name, ctx=dl_ctx,
+                                 max_height=args.max_height,
+                                 concurrency=args.concurrency, on_progress=cb,
+                                 audio_only=args.audio_only,
+                                 embed_metadata=args.embed_metadata,
+                                 subtitles=args.subs)
+            except EmberError as e:
+                print()
+                _report_error(str(e), prefix="  error")
+                rc = 1
+                continue
+            print("\r" + " " * 40, end="")
+            for p in paths:
+                print(f"\r  saved: {p}")
+    return rc
 
 
 if __name__ == "__main__":

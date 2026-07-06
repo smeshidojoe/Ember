@@ -1,9 +1,9 @@
-"""Twitch: клипы (clips).
+"""Twitch: clips.
 
-Метод — публичный GraphQL gql.twitch.tv с веб-client-id. Два запроса:
-1) качества клипа (sourceURL), 2) VideoAccessToken_Clip (подпись+токен).
-Финальный mp4 = sourceURL?sig=<signature>&token=<value>.
-Поддерживаются только клипы, не полные трансляции/VOD.
+Method — the public GraphQL gql.twitch.tv with a web client-id. Two requests:
+1) clip qualities (sourceURL), 2) VideoAccessToken_Clip (signature+token).
+Final mp4 = sourceURL?sig=<signature>&token=<value>.
+Only clips are supported, not full streams/VODs.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
-"""SoundCloud: аудио (треки).
+"""SoundCloud: audio (tracks).
 
-client_id публично не выдаётся, поэтому вытаскиваем его из JS сайта
-(как cobalt) и кэшируем на процесс. Затем resolve → выбираем
-прогрессивный поток (обычно mp3) → получаем финальный URL файла.
+client_id is not public, so we scrape it from the site JS (like cobalt) and
+cache it. Then resolve, prefer a progressive stream (usually mp3), and get
+the final file URL.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def _resolve(ctx: Context, url: str) -> dict:
 
 
 def _track_result(ctx: Context, track: dict, url: str = "") -> Result:
-    """Строит Result из данных трека (докачивая полную инфу при нужде)."""
+    """Build a Result from track data (fetching full info when needed)."""
     if "media" not in track and track.get("id"):
         client_id = _get_client_id(ctx)
         track = ctx.get(f"https://api-v2.soundcloud.com/tracks/{track['id']}",
@@ -110,7 +110,7 @@ def extract(ctx: Context, url: str) -> Result:
 
 
 def extract_playlist(ctx: Context, url: str):
-    """Плейлист (set) SoundCloud -> Playlist со списком Result по трекам."""
+    """SoundCloud set -> Playlist with a Result per track."""
     from ..models import Playlist
     if "on.soundcloud.com" in url:
         url = ctx.get(url, allow_redirects=True).url

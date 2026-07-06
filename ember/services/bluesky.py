@@ -1,7 +1,7 @@
-"""Bluesky: видео (HLS) и картинки из постов.
+"""Bluesky: video (HLS) and images from posts.
 
-Метод — публичный XRPC-эндпоинт getPostThread, авторизация не нужна.
-Видео отдаётся как HLS-плейлист, картинки — прямыми ссылками на CDN.
+Method — the public XRPC endpoint getPostThread, no auth needed.
+Video is served as an HLS playlist, images as direct CDN links.
 """
 
 from __future__ import annotations

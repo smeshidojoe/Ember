@@ -1,8 +1,8 @@
-"""VK / VK Видео: видео и клипы.
+"""VK / VK Video: videos and clips.
 
-Метод — публичное мобильное API VK Видео: получаем анонимный токен,
-затем video.get. Константы клиента — те же, что у cobalt (приложение
-VK Видео для iOS). Приватные видео могут требовать cookies аккаунта.
+Method — the public VK Video mobile API: get an anonymous token, then
+video.get. The client constants are the same as cobalt (VK Video iOS app).
+Private videos may require account cookies.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ _CACHE_TTL = 3600  # токен живёт ограниченно — держи
 
 
 def _get_auth(ctx: Context, headers) -> tuple:
-    """Возвращает (token, device_id), кэшируя пару на диск."""
+    """Return (token, device_id), caching the pair on disk."""
     cached = cache.get(_CACHE_KEY)
     if cached:
         return cached["token"], cached["device_id"]

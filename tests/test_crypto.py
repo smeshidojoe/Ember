@@ -1,8 +1,9 @@
 """Проверка встроенной (чистый Python) реализации AES-GCM по эталонным
 векторам — чтобы фолбек-крипто работал без сторонних библиотек."""
 
-from ember._browser_cookies import (_aes_gcm_decrypt_pure, _encrypt_block,
-                                     _key_expansion, aes_gcm_decrypt)
+from ember._browser_cookies import (_aes_cbc_decrypt_pure, _aes_gcm_decrypt_pure,
+                                     _encrypt_block, _key_expansion,
+                                     aes_cbc_decrypt, aes_gcm_decrypt)
 
 
 def test_aes128_block_fips197():
@@ -38,3 +39,13 @@ def test_public_backend_matches_pure():
     ct = bytes.fromhex("cea7403d4d606b6e074ec5d3baf39d18")
     tag = bytes.fromhex("d0d1c8a799996bf0265b98b5d48ab919")
     assert aes_gcm_decrypt(bytes(32), bytes(12), ct, tag) == bytes(16)
+
+
+def test_aes128_cbc_nist_vector():
+    # NIST SP800-38A F.2.2 AES-128-CBC
+    key = bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
+    iv = bytes.fromhex("000102030405060708090a0b0c0d0e0f")
+    ct = bytes.fromhex("7649abac8119b246cee98e9b12e9197d")
+    pt = bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")
+    assert _aes_cbc_decrypt_pure(key, iv, ct) == pt
+    assert aes_cbc_decrypt(key, iv, ct) == pt

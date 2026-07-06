@@ -1,4 +1,4 @@
-"""Модели данных: результат извлечения, медиафайлы, плейлисты."""
+"""Data models: extraction result, media files, playlists."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 @dataclass
 class MediaVariant:
-    """Альтернативное качество того же медиа (для выбора качества)."""
+    """An alternative quality of the same media (for quality selection)."""
 
     url: str
     height: Optional[int] = None
@@ -19,20 +19,19 @@ class MediaVariant:
 
 @dataclass
 class Media:
-    """Один медиафайл (или поток), готовый к скачиванию.
+    """One media file (or stream), ready to download.
 
-    http_headers обязательно передавайте своему загрузчику — часть CDN
-    (например, TikTok) отдаёт файл только с теми же cookies/User-Agent,
-    с которыми была открыта страница.
+    Always pass http_headers to your downloader — some CDNs (e.g. TikTok)
+    only serve the file with the same cookies/User-Agent used to open the page.
 
-    variants — другие доступные качества (если сервис их отдаёт). Верхний
-    url всегда указывает на лучшее качество; variants позволяют выбрать ниже.
+    variants — other available qualities (when the service exposes them). The
+    top-level url always points to the best quality; variants let you pick lower.
     """
 
     kind: str                # "video" | "audio" | "photo" | "gif"
     url: str
     ext: str = "mp4"
-    quality: Optional[str] = None          # например "1080p", "128kbps"
+    quality: Optional[str] = None          # e.g. "1080p", "128kbps"
     http_headers: Dict[str, str] = field(default_factory=dict)
     variants: List[MediaVariant] = field(default_factory=list)
 
@@ -52,13 +51,21 @@ class Media:
 
 
 @dataclass
+class Subtitle:
+    """A subtitle track (usually webvtt)."""
+    lang: str
+    url: str
+    ext: str = "vtt"
+
+
+@dataclass
 class Result:
-    """Результат ember.extract().
+    """Result of ember.extract().
 
     kind:
-      "single"  — один файл, media[0];
-      "merge"   — раздельные видео + аудио, их нужно смуксить (ffmpeg);
-      "gallery" — несколько независимых файлов (карусель фото и т.п.).
+      "single"  — one file, media[0];
+      "merge"   — separate video + audio, must be muxed (ffmpeg);
+      "gallery" — several independent files (photo carousel, etc.).
     """
 
     service: str
@@ -67,8 +74,9 @@ class Result:
     title: Optional[str] = None
     author: Optional[str] = None
     source_url: str = ""
-    filename_hint: Optional[str] = None    # безопасное имя файла без расширения
-    thumbnail: Optional[str] = None        # URL обложки/превью, если есть
+    filename_hint: Optional[str] = None    # safe file name without extension
+    thumbnail: Optional[str] = None        # cover/preview URL, if any
+    subtitles: List[Subtitle] = field(default_factory=list)
 
     @property
     def requires_merge(self) -> bool:
@@ -84,12 +92,14 @@ class Result:
             "filename_hint": self.filename_hint,
             "thumbnail": self.thumbnail,
             "media": [m.to_dict() for m in self.media],
+            "subtitles": [{"lang": s.lang, "url": s.url, "ext": s.ext}
+                          for s in self.subtitles],
         }
 
 
 @dataclass
 class Playlist:
-    """Несколько постов/треков по одной ссылке (плейлист, набор, лента)."""
+    """Several posts/tracks behind one link (playlist, set, feed)."""
 
     service: str
     entries: List[Result]
@@ -111,7 +121,7 @@ _FILENAME_BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
 def safe_filename(text: str, max_len: int = 120) -> str:
-    """Превращает произвольный текст в безопасное имя файла (без расширения)."""
+    """Turn arbitrary text into a safe file name (without extension)."""
     text = _FILENAME_BAD.sub("_", text).strip(" ._")
     text = re.sub(r"\s+", " ", text)
     return text[:max_len] if text else "media"

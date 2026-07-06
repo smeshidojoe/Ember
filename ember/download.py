@@ -1,17 +1,18 @@
-"""Скачивание результата Ember без yt-dlp.
+"""Download an Ember result without yt-dlp.
 
-Возможности:
-  - прямые файлы (mp4/mp3/jpg…) с докачкой (HTTP Range);
-  - HLS: разбор манифеста, выбор качества, параллельная загрузка сегментов;
-  - сборка HLS без ffmpeg (единый поток) или склейка через ffmpeg;
-  - прогресс через колбэк, встраивание метаданных, режим «только аудио».
+Features:
+  - direct files (mp4/mp3/jpg…) with resume (HTTP Range);
+  - HLS: manifest parsing, quality selection, parallel segment download;
+  - HLS assembly without ffmpeg (single stream) or muxing via ffmpeg;
+  - progress callback, metadata embedding, audio-only mode.
 
-ffmpeg ищется в PATH; без него сложные случаи сохраняются в родном
-контейнере (.ts) или сообщают, что ffmpeg нужен.
+ffmpeg is looked up on PATH; without it, complex cases are saved in their
+native container (.ts) or report that ffmpeg is required.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -19,22 +20,25 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Lock
 from typing import Callable, List, Optional
 
 from . import hls
+from ._browser_cookies import _pkcs7_unpad
+from ._browser_cookies import aes_cbc_decrypt as _aes_cbc_decrypt
 from .errors import ExtractionError, NetworkError
 from .http import Context, make_context
 from .models import Media, Result, safe_filename
 
+log = logging.getLogger(__name__)
+
 
 @dataclass
 class DownloadProgress:
-    """Состояние прогресса, передаётся в on_progress-колбэк."""
-    downloaded: int = 0                      # скачано байт
-    total: Optional[int] = None              # всего байт (если известно)
-    segments_done: int = 0                   # сегментов HLS скачано
-    segments_total: Optional[int] = None     # сегментов HLS всего
+    """Progress state passed to the on_progress callback."""
+    downloaded: int = 0                      # bytes downloaded
+    total: Optional[int] = None              # total bytes (if known)
+    segments_done: int = 0                   # HLS segments downloaded
+    segments_total: Optional[int] = None     # total HLS segments
     stage: str = "download"                  # "download" | "mux" | "metadata"
     path: Optional[str] = None
 
@@ -102,15 +106,23 @@ def _assemble_hls(ctx: Context, playlist_url: str, headers: Optional[dict],
                   out: Path, *, concurrency: int,
                   on_progress: Optional[ProgressCb],
                   prog: Optional[DownloadProgress]) -> bool:
-    """Скачивает media-плейлист (init + сегменты) в один файл.
-    Возвращает True, если это fMP4 (иначе MPEG-TS)."""
+    """Download a media playlist (init + segments) into one file.
+    Returns True if fMP4 (otherwise MPEG-TS)."""
     text = ctx.get(playlist_url, headers=headers or None).text
     media = hls.parse_media(text, playlist_url)
+    if media.is_live:
+        raise ExtractionError("live HLS streams are not supported", "hls")
     if not media.segments:
         raise ExtractionError("HLS playlist has no segments", "hls")
-
     if prog is not None:
         prog.segments_total = len(media.segments)
+
+    # шифрование сегментов
+    aes_key = None
+    if media.key_method == "AES-128" and media.key_uri:
+        aes_key = ctx.get(media.key_uri, headers=headers or None).content
+    elif media.key_method and media.key_method != "AES-128":
+        raise ExtractionError(f"unsupported HLS encryption: {media.key_method}", "hls")
 
     def fetch(url: str) -> bytes:
         r = ctx.get(url, headers=headers or None)
@@ -118,29 +130,34 @@ def _assemble_hls(ctx: Context, playlist_url: str, headers: Optional[dict],
             raise NetworkError(f"HTTP {r.status_code} on an HLS segment")
         return r.content
 
+    def decrypt(idx: int, data: bytes) -> bytes:
+        if not aes_key:
+            return data
+        iv = media.key_iv or (media.media_sequence + idx).to_bytes(16, "big")
+        return _pkcs7_unpad(_aes_cbc_decrypt(aes_key, iv, data))
+
+    def emit(data: bytes):
+        if prog is not None:
+            prog.segments_done += 1
+            prog.downloaded += len(data)
+            if on_progress:
+                on_progress(prog)
+
     with open(out, "wb") as f:
         if media.init_url:
             f.write(fetch(media.init_url))
-
         if concurrency > 1:
-            # качаем параллельно, пишем строго по порядку
+            # качаем параллельно, расшифровываем и пишем строго по порядку
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
-                for data in pool.map(fetch, media.segments):
+                for idx, data in enumerate(pool.map(fetch, media.segments)):
+                    data = decrypt(idx, data)
                     f.write(data)
-                    if prog is not None:
-                        prog.segments_done += 1
-                        prog.downloaded += len(data)
-                        if on_progress:
-                            on_progress(prog)
+                    emit(data)
         else:
-            for seg in media.segments:
-                data = fetch(seg)
+            for idx, seg in enumerate(media.segments):
+                data = decrypt(idx, fetch(seg))
                 f.write(data)
-                if prog is not None:
-                    prog.segments_done += 1
-                    prog.downloaded += len(data)
-                    if on_progress:
-                        on_progress(prog)
+                emit(data)
     return media.is_fmp4
 
 
@@ -175,14 +192,14 @@ def _mux(video: Path, audio: Path, out: Path, meta: Optional[dict] = None) -> No
 
 
 def _embed_metadata(path: Path, meta: dict) -> None:
-    """Дописывает метаданные в готовый файл (перекладыванием контейнера)."""
+    """Write metadata into a finished file (by remuxing the container)."""
     tmp = path.with_suffix(".meta" + path.suffix)
     _run_ffmpeg(["-i", str(path), "-c", "copy", *_meta_args(meta), str(tmp)])
     os.replace(tmp, path)
 
 
 def _to_audio(path: Path, out: Path) -> None:
-    """Извлекает аудиодорожку в mp3 (для режима «только аудио»)."""
+    """Extract the audio track to mp3 (for audio-only mode)."""
     _run_ffmpeg(["-i", str(path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", str(out)])
 
 
@@ -191,7 +208,7 @@ def _to_audio(path: Path, out: Path) -> None:
 # ----------------------------------------------------------------------------
 
 def _pick_progressive_url(media: Media, max_height: Optional[int]) -> str:
-    """Выбирает URL нужного качества из variants (или лучший media.url)."""
+    """Pick the URL of the wanted quality from variants (or best media.url)."""
     if not media.variants or not max_height:
         return media.url
     ok = [v for v in media.variants if (v.height or 0) <= max_height]
@@ -201,7 +218,7 @@ def _pick_progressive_url(media: Media, max_height: Optional[int]) -> str:
 
 
 def available_qualities(media: Media, ctx: Optional[Context] = None) -> List[int]:
-    """Список доступных высот (напр. [1080, 720, 480]) для выбора качества."""
+    """List of available heights (e.g. [1080, 720, 480]) for quality choice."""
     if media.ext != "m3u8":
         heights = {v.height for v in media.variants if v.height}
         if media.quality and media.quality.rstrip("p").isdigit():
@@ -223,10 +240,11 @@ def download_media(media: Media, out_path: str, *,
                    resume: bool = True,
                    audio_only: bool = False,
                    meta: Optional[dict] = None) -> str:
-    """Скачивает один Media. Возвращает ФАКТИЧЕСКИЙ путь к файлу."""
+    """Download one Media. Returns the ACTUAL file path."""
     ctx = ctx or make_context()
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    log.info("download %s -> %s", media.ext, out)
 
     if media.ext != "m3u8":
         chosen = Media(kind=media.kind, url=_pick_progressive_url(media, max_height),
@@ -296,6 +314,21 @@ def _download_hls(ctx: Context, media: Media, out: Path, *,
         return final
 
 
+def _download_subtitles(result: Result, out_dir: str, base: str,
+                        ctx: Context) -> List[str]:
+    paths = []
+    for sub in result.subtitles:
+        out = Path(out_dir) / f"{base}.{safe_filename(sub.lang)}.{sub.ext}"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _stream_to_file(ctx, Media(kind="text", url=sub.url, ext=sub.ext),
+                            out, None, False)
+            paths.append(str(out))
+        except (NetworkError, OSError) as e:
+            log.warning("subtitle %s failed: %s", sub.lang, e)
+    return paths
+
+
 def download(result: Result, out_dir: str = ".", *,
              filename: Optional[str] = None,
              ctx: Optional[Context] = None,
@@ -303,11 +336,13 @@ def download(result: Result, out_dir: str = ".", *,
              concurrency: int = 1,
              on_progress: Optional[ProgressCb] = None,
              audio_only: bool = False,
-             embed_metadata: bool = False) -> List[str]:
-    """Скачивает весь Result. Возвращает список путей к созданным файлам.
+             embed_metadata: bool = False,
+             subtitles: bool = False) -> List[str]:
+    """Download a whole Result. Returns paths of the created files.
 
-    filename — базовое имя файла без расширения; если не задано, берётся
-    из метаданных (result.filename_hint, т.е. с сайта).
+    filename — base file name without extension; if omitted, taken from
+    metadata (result.filename_hint, i.e. from the site).
+    subtitles=True — also download subtitle tracks alongside.
     """
     ctx = ctx or make_context()
     base = safe_filename(filename) if filename else (result.filename_hint or "media")
@@ -315,6 +350,7 @@ def download(result: Result, out_dir: str = ".", *,
     if embed_metadata:
         meta = {"title": result.title, "artist": result.author}
 
+    written: List[str] = []
     if result.kind == "merge":
         if not ffmpeg_available():
             raise ExtractionError(
@@ -330,16 +366,18 @@ def download(result: Result, out_dir: str = ".", *,
             out = Path(out_dir) / f"{base}.mp4"
             out.parent.mkdir(parents=True, exist_ok=True)
             _mux(vp, ap, out, meta)
-        return [str(out)]
+        written = [str(out)]
+    else:
+        multiple = len(result.media) > 1
+        for i, media in enumerate(result.media, 1):
+            suffix = f"_{i}" if multiple else ""
+            ext = "mp4" if media.ext == "m3u8" else media.ext
+            out = Path(out_dir) / f"{base}{suffix}.{ext}"
+            written.append(download_media(
+                media, str(out), ctx=ctx, max_height=max_height,
+                concurrency=concurrency, on_progress=on_progress,
+                audio_only=audio_only, meta=meta))
 
-    multiple = len(result.media) > 1
-    written: List[str] = []
-    for i, media in enumerate(result.media, 1):
-        suffix = f"_{i}" if multiple else ""
-        ext = "mp4" if media.ext == "m3u8" else media.ext
-        out = Path(out_dir) / f"{base}{suffix}.{ext}"
-        written.append(download_media(
-            media, str(out), ctx=ctx, max_height=max_height,
-            concurrency=concurrency, on_progress=on_progress,
-            audio_only=audio_only, meta=meta))
+    if subtitles and result.subtitles:
+        written += _download_subtitles(result, out_dir, base, ctx)
     return written
