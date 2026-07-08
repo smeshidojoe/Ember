@@ -25,7 +25,7 @@ from typing import Callable, List, Optional
 from . import hls
 from ._browser_cookies import _pkcs7_unpad
 from ._browser_cookies import aes_cbc_decrypt as _aes_cbc_decrypt
-from .errors import ExtractionError, NetworkError
+from .errors import EmberError, ExtractionError, NetworkError
 from .http import Context, make_context
 from .models import Media, Result, safe_filename
 
@@ -373,10 +373,17 @@ def download(result: Result, out_dir: str = ".", *,
             suffix = f"_{i}" if multiple else ""
             ext = "mp4" if media.ext == "m3u8" else media.ext
             out = Path(out_dir) / f"{base}{suffix}.{ext}"
-            written.append(download_media(
-                media, str(out), ctx=ctx, max_height=max_height,
-                concurrency=concurrency, on_progress=on_progress,
-                audio_only=audio_only, meta=meta))
+            try:
+                written.append(download_media(
+                    media, str(out), ctx=ctx, max_height=max_height,
+                    concurrency=concurrency, on_progress=on_progress,
+                    audio_only=audio_only, meta=meta))
+            except (EmberError, OSError) as e:
+                # один битый элемент карусели не должен рушить всю галерею
+                if not multiple:
+                    raise
+                log.warning("gallery item %d/%d failed: %s",
+                            i, len(result.media), e)
 
     if subtitles and result.subtitles:
         written += _download_subtitles(result, out_dir, base, ctx)

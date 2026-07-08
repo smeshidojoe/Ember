@@ -110,6 +110,50 @@ def _from_embed(ctx: Context, shortcode: str) -> Optional[dict]:
     return None
 
 
+def _node_from_mobile(m: dict) -> Optional[dict]:
+    if m.get("video_versions"):
+        return {"is_video": True, "video_url": m["video_versions"][0]["url"]}
+    cand = (m.get("image_versions2") or {}).get("candidates") or []
+    return {"display_url": cand[0]["url"]} if cand else None
+
+
+def _from_mobile_info(ctx: Context, shortcode: str) -> Optional[dict]:
+    """Mobile media/info — carries carousel_media (full carousel). Needs a
+    non-blocked IP or cookies; returns a GraphQL-shaped dict for extract()."""
+    headers = {"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID}
+    r = ctx.get("https://i.instagram.com/api/v1/oembed/",
+                params={"url": f"https://www.instagram.com/p/{shortcode}/"},
+                headers=headers)
+    media_id = r.json().get("media_id") if r.status_code == 200 else None
+    if not media_id:
+        return None
+    info = ctx.get(f"https://i.instagram.com/api/v1/media/{media_id}/info/",
+                   headers=headers)
+    if info.status_code != 200:
+        return None
+    try:
+        item = info.json()["items"][0]
+    except (ValueError, LookupError):
+        return None
+    owner = {"username": (item.get("user") or {}).get("username")}
+    caption = {"edges": [{"node": {"text": (item.get("caption") or {}).get("text", "")}}]}
+    if item.get("carousel_media"):
+        edges = []
+        for m in item["carousel_media"]:
+            node = _node_from_mobile(m)
+            if node:
+                edges.append({"node": node})
+        if not edges:
+            return None
+        return {"owner": owner, "edge_media_to_caption": caption,
+                "edge_sidecar_to_children": {"edges": edges}}
+    node = _node_from_mobile(item)
+    if not node:
+        return None
+    node.update({"owner": owner, "edge_media_to_caption": caption})
+    return node
+
+
 def _from_oembed(ctx: Context, shortcode: str) -> Optional[dict]:
     """Last resort: mobile oembed. Preview image + metadata only."""
     r = ctx.get(
@@ -138,6 +182,7 @@ def extract(ctx: Context, url: str) -> Result:
     shortcode = _resolve_shortcode(ctx, url)
 
     data = (_from_graphql(ctx, shortcode)
+            or _from_mobile_info(ctx, shortcode)
             or _from_embed(ctx, shortcode)
             or _from_oembed(ctx, shortcode))
     if not data:

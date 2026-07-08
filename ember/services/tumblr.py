@@ -63,22 +63,26 @@ def extract(ctx: Context, url: str) -> Result:
         return Result(service=SERVICE, kind=kind, media=media, title=title,
                       author=author, source_url=url, filename_hint=hint)
 
-    # --- новый формат NPF (element.content / trail) ---
+    # --- новый формат NPF (element.content / trail) — собираем ВСЕ блоки ---
+    npf = []
     for c in _iter_content(element):
+        if not isinstance(c, dict):
+            continue
         ctype = c.get("type")
         if ctype == "video":
             u = (c.get("media") or {}).get("url")
             if u:
-                return result("single", [Media(kind="video", url=u, ext="mp4")])
-        if ctype == "audio":
+                npf.append(Media(kind="video", url=u, ext="mp4"))
+        elif ctype == "audio":
             u = (c.get("media") or {}).get("url")
             if u:
-                return result("single", [Media(kind="audio", url=u, ext="mp3")])
-        if ctype == "image":
+                npf.append(Media(kind="audio", url=u, ext="mp3"))
+        elif ctype == "image":
             media_list = c.get("media") or []
             if media_list and media_list[0].get("url"):
-                return result("single",
-                              [Media(kind="photo", url=media_list[0]["url"], ext="jpg")])
+                npf.append(Media(kind="photo", url=media_list[0]["url"], ext="jpg"))
+    if npf:
+        return result("gallery" if len(npf) > 1 else "single", npf)
 
     # --- legacy-формат (старые посты: video_url / photos / audio_url) ---
     legacy_type = element.get("type")

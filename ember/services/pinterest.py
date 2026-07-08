@@ -43,6 +43,21 @@ def extract(ctx: Context, url: str) -> Result:
 
     hint = safe_filename(f"pinterest_{pin_id}")
 
+    # карусель: несколько картинок в carousel_data
+    cm = re.search(r'"carousel_slots"\s*:\s*(\[.*?\}\s*\])', html, re.DOTALL)
+    if cm:
+        seen, media = set(), []
+        for u in re.findall(r'https://i\.pinimg\.com/originals/[^"\\]+?\.(?:jpg|png)',
+                            cm.group(1)):
+            u = u.replace("\\/", "/")
+            if u not in seen:
+                seen.add(u)
+                ext = "png" if u.endswith(".png") else "jpg"
+                media.append(Media(kind="photo", url=u, ext=ext))
+        if len(media) > 1:
+            return Result(service=SERVICE, kind="gallery", media=media,
+                          source_url=url, filename_hint=hint)
+
     m = _VIDEO_RE.search(html)
     if m:
         video_url = m.group(1).replace("\\/", "/")
