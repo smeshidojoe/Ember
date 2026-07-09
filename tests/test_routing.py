@@ -39,3 +39,19 @@ def test_routing_targets():
 def test_playlist_support():
     assert ember.supports_playlist("https://soundcloud.com/u/sets/name")
     assert not ember.supports_playlist("https://vimeo.com/76979871")
+
+
+def test_timeline_support():
+    for url in [
+        "https://soundcloud.com/someartist",
+        "https://www.twitch.tv/somechannel",
+        "https://www.tumblr.com/someblog",
+        "https://vimeo.com/someuser",
+        "https://x.com/someone",
+        "https://www.instagram.com/nasa/",
+        "https://rutube.ru/channel/123/",
+    ]:
+        assert ember.supports_timeline(url), url
+    # a post/video URL is not a profile
+    assert not ember.supports_timeline("https://vimeo.com/76979871")
+    assert not ember.supports_timeline("https://x.com/u/status/123")

@@ -20,6 +20,10 @@ PATTERNS = [
     re.compile(r"https?://player\.vimeo\.com/video/(\d+)(?:\?h=(\w+))?"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.)?vimeo\.com/([a-zA-Z][\w]*)/?$"),
+]
+
 
 def _subtitles(text_tracks: list) -> list:
     subs = []
@@ -103,3 +107,31 @@ def extract(ctx: Context, url: str) -> Result:
                 thumbnail=thumb, subtitles=subs)
 
     raise ExtractionError("Vimeo response has neither mp4 nor HLS stream", SERVICE)
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Vimeo user -> Playlist of their latest videos (v2 simple API)."""
+    from ..models import Playlist
+    m = PROFILE_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not a Vimeo user URL", SERVICE)
+    user = m.group(1)
+    r = ctx.get(f"https://vimeo.com/api/v2/{user}/videos.json")
+    if r.status_code != 200:
+        raise ExtractionError(f"could not list Vimeo user (HTTP {r.status_code})", SERVICE)
+    try:
+        videos = r.json()
+    except ValueError as e:
+        raise ExtractionError(f"unexpected Vimeo response: {e}", SERVICE) from e
+    entries = []
+    for v in videos[:limit]:
+        vid = v.get("id")
+        if not vid:
+            continue
+        try:
+            entries.append(extract(ctx, f"https://vimeo.com/{vid}"))
+        except ExtractionError:
+            continue
+    if not entries:
+        raise ExtractionError("no videos for this Vimeo user", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=user, source_url=url)

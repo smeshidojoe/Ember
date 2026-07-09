@@ -18,6 +18,10 @@ PATTERNS = [
     re.compile(r"https?://(?:www\.)?rutube\.ru/(?:video(?:/private)?|play/embed|shorts)/([0-9a-f]{32})"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.)?rutube\.ru/(?:channel|u)/(\d+)/?"),
+]
+
 
 def extract(ctx: Context, url: str) -> Result:
     m = PATTERNS[0].match(url)
@@ -58,3 +62,35 @@ def extract(ctx: Context, url: str) -> Result:
         media=[Media(kind="video", url=m3u8, ext="m3u8")],
         title=title, author=author, source_url=url, filename_hint=hint,
         thumbnail=thumb, subtitles=subtitles)
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Rutube channel -> Playlist of its latest videos."""
+    from ..models import Playlist
+    m = PROFILE_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not a Rutube channel URL", SERVICE)
+    person_id = m.group(1)
+    entries, page = [], 1
+    while len(entries) < limit and page <= 5:
+        r = ctx.get(f"https://rutube.ru/api/video/person/{person_id}/",
+                    params={"page": page})
+        if r.status_code != 200:
+            break
+        results = r.json().get("results") or []
+        if not results:
+            break
+        for v in results:
+            vid = v.get("id")
+            if not vid:
+                continue
+            try:
+                entries.append(extract(ctx, f"https://rutube.ru/video/{vid}/"))
+            except ExtractionError:
+                continue
+            if len(entries) >= limit:
+                break
+        page += 1
+    if not entries:
+        raise ExtractionError("no videos for this Rutube channel", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=person_id, source_url=url)

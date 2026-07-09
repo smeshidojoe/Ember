@@ -28,6 +28,10 @@ PATTERNS = [
     re.compile(r"https?://(?:www\.)?twitch\.tv/clip/([\w-]+)"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.|m\.)?twitch\.tv/([a-zA-Z0-9_]{2,25})/?$"),
+]
+
 
 def _gql(ctx: Context, payload):
     r = ctx.post(_GQL, headers={"Client-ID": _CLIENT_ID}, json=payload)
@@ -80,3 +84,30 @@ def extract(ctx: Context, url: str) -> Result:
                      quality=best.get("quality"))],
         title=title, author=author, source_url=url, filename_hint=hint,
         thumbnail=clip.get("thumbnailURL"))
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Twitch channel -> Playlist of its latest clips."""
+    from ..models import Playlist
+    m = PROFILE_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not a Twitch channel URL", SERVICE)
+    login = m.group(1)
+    q = ('{ user(login: "%s") { clips(first: %d) { edges { node { slug } } } } }'
+         % (login, limit))
+    data = _gql(ctx, {"query": q})
+    user = (data.get("data") or {}).get("user")
+    if not user:
+        raise ExtractionError(f"channel {login} not found", SERVICE)
+    entries = []
+    for edge in (user.get("clips") or {}).get("edges") or []:
+        slug = (edge.get("node") or {}).get("slug")
+        if not slug:
+            continue
+        try:
+            entries.append(extract(ctx, f"https://clips.twitch.tv/{slug}"))
+        except ExtractionError:
+            continue
+    if not entries:
+        raise ExtractionError("no clips for this channel", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=login, source_url=url)

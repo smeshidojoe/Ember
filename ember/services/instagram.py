@@ -28,6 +28,11 @@ PATTERNS = [
     re.compile(r"https?://(?:www\.)?instagram\.com/share/((?:p|reel|reels)/)?[A-Za-z0-9_-]+"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.)?instagram\.com/(?!p/|reel/|reels/|tv/|share/|explore/)"
+               r"([A-Za-z0-9_.]+)/?$"),
+]
+
 _IG_APP_ID = "936619743392459"
 _GRAPHQL_DOC_ID = "8845758582119845"  # PolarisPostActionLoadPostQueryQuery
 _MOBILE_UA = (
@@ -178,18 +183,8 @@ def _from_oembed(ctx: Context, shortcode: str) -> Optional[dict]:
     }
 
 
-def extract(ctx: Context, url: str) -> Result:
-    shortcode = _resolve_shortcode(ctx, url)
-
-    data = (_from_graphql(ctx, shortcode)
-            or _from_mobile_info(ctx, shortcode)
-            or _from_embed(ctx, shortcode)
-            or _from_oembed(ctx, shortcode))
-    if not data:
-        raise ExtractionError(
-            "Instagram did not return the post anonymously. It needs "
-            "logged-in account cookies, or a different IP (proxy).", SERVICE)
-
+def _node_to_result(data: dict, url: str, shortcode: str = "") -> Optional[Result]:
+    """Build a Result from a shortcode_media / timeline node."""
     owner = data.get("owner") or {}
     author = owner.get("username")
     caption_edges = ((data.get("edge_media_to_caption") or {}).get("edges") or [])
@@ -210,11 +205,59 @@ def extract(ctx: Context, url: str) -> Result:
             if data.get("_thumbnail_only"):
                 item.quality = "thumbnail"
             media_items.append(item)
-
     if not media_items:
-        raise ExtractionError("no video or photo found in the post", SERVICE)
+        return None
 
-    hint = safe_filename(f"instagram_{author or 'post'}_{shortcode}")
+    sc = shortcode or data.get("shortcode") or ""
+    hint = safe_filename(f"instagram_{author or 'post'}_{sc}")
     kind = "single" if len(media_items) == 1 else "gallery"
     return Result(service=SERVICE, kind=kind, media=media_items, title=title,
                   author=author, source_url=url, filename_hint=hint)
+
+
+def extract(ctx: Context, url: str) -> Result:
+    shortcode = _resolve_shortcode(ctx, url)
+    data = (_from_graphql(ctx, shortcode)
+            or _from_mobile_info(ctx, shortcode)
+            or _from_embed(ctx, shortcode)
+            or _from_oembed(ctx, shortcode))
+    if not data:
+        raise ExtractionError(
+            "Instagram did not return the post anonymously. It needs "
+            "logged-in account cookies, or a different IP (proxy).", SERVICE)
+    res = _node_to_result(data, url, shortcode)
+    if res is None:
+        raise ExtractionError("no video or photo found in the post", SERVICE)
+    return res
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Instagram profile -> Playlist of the latest posts.
+
+    Uses web_profile_info; needs account cookies or a non-blocked IP
+    (same wall as post extraction on restricted networks)."""
+    from ..models import Playlist
+    m = PROFILE_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not an Instagram profile URL", SERVICE)
+    username = m.group(1)
+    r = ctx.get("https://i.instagram.com/api/v1/users/web_profile_info/",
+                params={"username": username},
+                headers={"x-ig-app-id": _IG_APP_ID, "User-Agent": _MOBILE_UA})
+    if r.status_code != 200:
+        raise ExtractionError(
+            f"Instagram returned HTTP {r.status_code} for the profile — "
+            "needs account cookies or a different IP (proxy)", SERVICE)
+    try:
+        edges = r.json()["data"]["user"]["edge_owner_to_timeline_media"]["edges"]
+    except (ValueError, LookupError) as e:
+        raise ExtractionError(f"unexpected Instagram response: {e}", SERVICE) from e
+    entries = []
+    for edge in edges[:limit]:
+        node = edge.get("node") or {}
+        res = _node_to_result(node, f"https://www.instagram.com/p/{node.get('shortcode','')}/")
+        if res is not None:
+            entries.append(res)
+    if not entries:
+        raise ExtractionError("no posts with media for this profile", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=username, source_url=url)

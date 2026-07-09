@@ -95,6 +95,15 @@ if ember.supports_playlist(url):
         ember.download(entry, "downloads/")
 ```
 
+Author timeline — latest posts by profile/channel URL (SoundCloud, VK, Twitch,
+Tumblr, Rutube, Vimeo, Pinterest, Twitter/X, Instagram):
+
+```python
+if ember.supports_timeline(url):                 # e.g. "https://x.com/nasa"
+    for entry in ember.extract_timeline(url, limit=30).entries:
+        ember.download(entry, "downloads/")
+```
+
 ## Quick start — command line
 
 Quote the URL. **Without `-d` the command only prints links and metadata — no download
@@ -144,6 +153,8 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | `--concurrency N` | parallel HLS segments (default `1`) |
 | `--embed-metadata` (`--metadata`) | write title/author into the file (needs ffmpeg); implies download |
 | `--playlist` | treat as a set (SoundCloud sets) |
+| `--timeline` | treat the URL as a profile/channel, list latest posts |
+| `--limit N` | max items for `--timeline` (default `30`) |
 | `--proxy URL` | proxy for all requests, e.g. `http://host:port` (helps with IP-blocked sites) |
 | `--timeout SEC` | per-request timeout, seconds (default `15`) |
 | `--cookies "a=1; b=2"` | cookies as a string |

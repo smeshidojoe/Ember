@@ -22,6 +22,10 @@ PATTERNS = [
     re.compile(r"https?://on\.soundcloud\.com/[\w-]+"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.|m\.)?soundcloud\.com/[\w-]+/?(?:\?.*)?$"),
+]
+
 _CACHE_KEY = "soundcloud_client_id"
 _CACHE_TTL = 7 * 24 * 3600  # client_id живёт долго — кэшируем на неделю
 _SCRIPT_RE = re.compile(r'<script[^>]+src="(https://a-v2\.sndcdn\.com/[^"]+)"')
@@ -131,3 +135,27 @@ def extract_playlist(ctx: Context, url: str):
         raise ExtractionError("the set has no available tracks", SERVICE)
     return Playlist(service=SERVICE, entries=entries, title=data.get("title"),
                     author=(data.get("user") or {}).get("username"), source_url=url)
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """SoundCloud user -> Playlist of their latest tracks."""
+    from ..models import Playlist
+    user = _resolve(ctx, url)
+    if user.get("kind") != "user":
+        raise ExtractionError("the link is not a SoundCloud user", SERVICE)
+    client_id = _get_client_id(ctx)
+    r = ctx.get(f"https://api-v2.soundcloud.com/users/{user['id']}/tracks",
+                params={"client_id": client_id, "limit": limit})
+    if r.status_code != 200:
+        raise ExtractionError(f"could not list tracks (HTTP {r.status_code})", SERVICE)
+    entries = []
+    for track in r.json().get("collection") or []:
+        try:
+            entries.append(_track_result(ctx, track))
+        except ExtractionError:
+            continue
+    if not entries:
+        raise ExtractionError("no available tracks for this user", SERVICE)
+    return Playlist(service=SERVICE, entries=entries,
+                    title=user.get("username"), author=user.get("username"),
+                    source_url=url)

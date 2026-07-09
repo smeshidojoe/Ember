@@ -24,6 +24,11 @@ PATTERNS = [
     re.compile(r"https?://(?:www\.|mobile\.)?(?:twitter|x)\.com/[^/]+/status(?:es)?/(\d+)"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.|mobile\.)?(?:twitter|x)\.com/(?!i/|home$|search)"
+               r"([A-Za-z0-9_]{1,15})/?$"),
+]
+
 # публичный веб-bearer, тот же что в cobalt и веб-клиенте твиттера
 _BEARER = (
     "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs"
@@ -225,3 +230,62 @@ def extract(ctx: Context, url: str) -> Result:
     return Result(service=SERVICE, kind=kind, media=media_items, title=title,
                   author=author, source_url=url, filename_hint=hint,
                   thumbnail=thumbs[0] if thumbs else None)
+
+
+def _walk_tweets(obj):
+    """Recursively yield tweet dicts that carry mediaDetails."""
+    if isinstance(obj, dict):
+        if obj.get("id_str") and "mediaDetails" in obj:
+            yield obj
+        for v in obj.values():
+            yield from _walk_tweets(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_tweets(v)
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Twitter/X profile -> Playlist of latest posts with media.
+
+    Uses the public syndication timeline (no auth). Empty for protected
+    accounts or when X restricts the widget."""
+    from ..models import Playlist
+    m = PROFILE_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not a Twitter/X profile URL", SERVICE)
+    handle = m.group(1)
+    r = ctx.get(f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{handle}",
+                headers={"Referer": "https://platform.twitter.com/"})
+    if r.status_code != 200:
+        raise ExtractionError(f"could not load timeline (HTTP {r.status_code})", SERVICE)
+    nd = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.DOTALL)
+    if not nd:
+        raise ExtractionError("timeline widget returned no data (rate-limited?)", SERVICE)
+    try:
+        data = json.loads(nd.group(1))
+    except ValueError as e:
+        raise ExtractionError(f"unexpected timeline response: {e}", SERVICE) from e
+
+    entries, seen = [], set()
+    for tweet in _walk_tweets(data):
+        tid = tweet["id_str"]
+        if tid in seen:
+            continue
+        seen.add(tid)
+        media_items, thumbs = [], []
+        for entry in tweet.get("mediaDetails") or []:
+            _append_entry(entry, media_items, thumbs)
+        if not media_items:
+            continue
+        author = (tweet.get("user") or {}).get("screen_name") or handle
+        entries.append(Result(
+            service=SERVICE, kind="single" if len(media_items) == 1 else "gallery",
+            media=media_items, title=(tweet.get("text") or "").strip() or None,
+            author=author, source_url=f"https://x.com/{author}/status/{tid}",
+            filename_hint=safe_filename(f"twitter_{author}_{tid}"),
+            thumbnail=thumbs[0] if thumbs else None))
+        if len(entries) >= limit:
+            break
+    if not entries:
+        raise ExtractionError("no media posts in this timeline", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=handle, source_url=url)

@@ -28,16 +28,18 @@ from .cookies import cookies_from_browser
 from .download import (DownloadProgress, available_qualities, download,
                        download_media, ffmpeg_available)
 from .models import Media, MediaVariant, Playlist, Result, Subtitle
-from .router import (can_extract, extract, extract_playlist, supported_services,
-                     supports_playlist)
+from .router import (can_extract, extract, extract_playlist, extract_timeline,
+                     supported_services, supports_playlist, supports_timeline)
 
 __version__ = "0.3.0"
 
 __all__ = [
     "extract",
     "extract_playlist",
+    "extract_timeline",
     "can_extract",
     "supports_playlist",
+    "supports_timeline",
     "supported_services",
     "cookies_from_browser",
     "download",

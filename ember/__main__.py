@@ -13,7 +13,7 @@ import sys
 import time
 
 from . import (DownloadProgress, EmberError, available_qualities, download,
-               extract, extract_playlist, supports_playlist)
+               extract, extract_playlist, extract_timeline, supports_playlist)
 from .http import make_context
 
 # browsers understood by --cookies-from-browser (same set as yt-dlp)
@@ -172,6 +172,10 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="write title/author into the file (needs ffmpeg); implies --download")
     p.add_argument("--playlist", action="store_true",
                    help="treat as a playlist/set (SoundCloud sets)")
+    p.add_argument("--timeline", action="store_true",
+                   help="treat the URL as a profile/channel and list latest posts")
+    p.add_argument("--limit", type=int, default=30, metavar="N",
+                   help="max items for --timeline (default 30)")
     p.add_argument("--proxy", metavar="URL",
                    help="proxy for all requests, e.g. http://host:port "
                         "(helps with IP-blocked sites)")
@@ -286,8 +290,12 @@ def main() -> int:
 
     for url in urls:
         try:
-            if args.playlist or (do_download and supports_playlist(url)
-                                 and "/sets/" in url):
+            if args.timeline:
+                pl = extract_timeline(url, limit=args.limit, **common)
+                results = pl.entries
+                print(f"timeline: {pl.author or '-'} ({len(results)} items)")
+            elif args.playlist or (do_download and supports_playlist(url)
+                                   and "/sets/" in url):
                 playlist = extract_playlist(url, **common)
                 results = playlist.entries
                 print(f"playlist: {playlist.title or '-'} ({len(results)} items)")

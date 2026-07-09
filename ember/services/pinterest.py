@@ -19,6 +19,10 @@ PATTERNS = [
     re.compile(r"https?://pin\.it/([\w]+)"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:[\w-]+\.)?pinterest\.[\w.]+/(?!pin/)([\w-]+)(?:/([\w-]+))?/?$"),
+]
+
 _VIDEO_RE = re.compile(r'"url":"(https://v1\.pinimg\.com/videos/[^"]+?\.mp4)"')
 _HLS_RE = re.compile(r'"url":"(https://v1\.pinimg\.com/videos/[^"]+?\.m3u8)"')
 _IMG_RE = re.compile(r'"(https://i\.pinimg\.com/originals/[^"]+?\.(?:jpg|png|gif))"')
@@ -82,3 +86,31 @@ def extract(ctx: Context, url: str) -> Result:
                       source_url=url, filename_hint=hint)
 
     raise ExtractionError("no media found on the pin page", SERVICE)
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Pinterest user or board -> Playlist of its latest pins (via RSS feed)."""
+    from ..models import Playlist
+    m = PROFILE_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not a Pinterest user/board URL", SERVICE)
+    user, board = m.group(1), m.group(2)
+    rss = (f"https://www.pinterest.com/{user}/{board}.rss" if board
+           else f"https://www.pinterest.com/{user}/feed.rss")
+    r = ctx.get(rss)
+    if r.status_code != 200:
+        raise ExtractionError(f"could not read Pinterest feed (HTTP {r.status_code})", SERVICE)
+    seen, entries = set(), []
+    for pin_id in re.findall(r"/pin/(\d+)", r.text):
+        if pin_id in seen:
+            continue
+        seen.add(pin_id)
+        try:
+            entries.append(extract(ctx, f"https://www.pinterest.com/pin/{pin_id}/"))
+        except ExtractionError:
+            continue
+        if len(entries) >= limit:
+            break
+    if not entries:
+        raise ExtractionError("no pins in this Pinterest feed", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=user, source_url=url)

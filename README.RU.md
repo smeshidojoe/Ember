@@ -96,6 +96,15 @@ if ember.supports_playlist(url):
         ember.download(entry, "downloads/")
 ```
 
+Лента автора — последние посты по ссылке профиля/канала (SoundCloud, VK, Twitch,
+Tumblr, Rutube, Vimeo, Pinterest, Twitter/X, Instagram):
+
+```python
+if ember.supports_timeline(url):                 # напр. "https://x.com/nasa"
+    for entry in ember.extract_timeline(url, limit=30).entries:
+        ember.download(entry, "downloads/")
+```
+
 ## Быстрый старт — командная строка
 
 Ссылку берите в кавычках. **Без `-d` команда только показывает ссылки и метаданные —
@@ -145,6 +154,8 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | `--concurrency N` | параллельных сегментов HLS (по умолчанию `1`) |
 | `--embed-metadata` (`--metadata`) | вписать название/автора в файл (нужен ffmpeg); включает загрузку |
 | `--playlist` | обработать как набор (SoundCloud sets) |
+| `--timeline` | считать ссылку профилем/каналом, показать последние посты |
+| `--limit N` | максимум элементов для `--timeline` (по умолчанию `30`) |
 | `--proxy URL` | прокси для всех запросов, напр. `http://host:port` (помогает с блоком по IP) |
 | `--timeout SEC` | таймаут запроса, сек (по умолчанию `15`) |
 | `--cookies "a=1; b=2"` | cookies строкой |

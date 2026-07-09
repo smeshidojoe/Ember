@@ -23,6 +23,11 @@ PATTERNS = [
     re.compile(r"https?://([\w-]+)\.tumblr\.com/post/(\d+)"),
 ]
 
+PROFILE_PATTERNS = [
+    re.compile(r"https?://(?:www\.)?tumblr\.com/([\w-]+)/?(?:\?.*)?$"),
+    re.compile(r"https?://([\w-]+)\.tumblr\.com/?(?:\?.*)?$"),
+]
+
 
 def _parse(url: str):
     for p in PATTERNS:
@@ -39,31 +44,19 @@ def _iter_content(element: dict):
         yield from trail.get("content") or []
 
 
-def extract(ctx: Context, url: str) -> Result:
-    domain, post_id = _parse(url)
-
-    api = f"https://api-http2.tumblr.com/v2/blog/{domain}/posts/{post_id}/permalink"
-    r = ctx.get(api, params={"api_key": _API_KEY},
-                headers={"User-Agent": _MOBILE_UA})
-    if r.status_code != 200:
-        raise ExtractionError(
-            f"Tumblr API returned HTTP {r.status_code} (post deleted or blog private)",
-            SERVICE)
-    try:
-        elements = r.json()["response"]["timeline"]["elements"]
-        element = elements[0]
-    except (ValueError, LookupError) as e:
-        raise ExtractionError(f"unexpected Tumblr response: {e}", SERVICE) from e
-
+def _element_to_result(element: dict, domain: str, url: str):
+    """Build a Result from one timeline element, or None if it has no media."""
     author = (element.get("blog") or {}).get("name") or domain
     title = element.get("summary") or None
+    post_id = element.get("id") or element.get("id_string") or ""
     hint = safe_filename(f"tumblr_{author}_{post_id}")
 
     def result(kind, media):
         return Result(service=SERVICE, kind=kind, media=media, title=title,
-                      author=author, source_url=url, filename_hint=hint)
+                      author=author, source_url=url or element.get("post_url", ""),
+                      filename_hint=hint)
 
-    # --- новый формат NPF (element.content / trail) — собираем ВСЕ блоки ---
+    # NPF format (element.content / trail) — collect ALL blocks
     npf = []
     for c in _iter_content(element):
         if not isinstance(c, dict):
@@ -84,7 +77,7 @@ def extract(ctx: Context, url: str) -> Result:
     if npf:
         return result("gallery" if len(npf) > 1 else "single", npf)
 
-    # --- legacy-формат (старые посты: video_url / photos / audio_url) ---
+    # legacy format (older posts: video_url / photos / audio_url)
     legacy_type = element.get("type")
     if legacy_type == "video" and element.get("video_url"):
         return result("single", [Media(kind="video", url=element["video_url"], ext="mp4")])
@@ -102,5 +95,52 @@ def extract(ctx: Context, url: str) -> Result:
                 media.append(Media(kind=kind, url=src, ext=ext))
         if media:
             return result("gallery" if len(media) > 1 else "single", media)
+    return None
 
-    raise ExtractionError("no video, audio or image in the post", SERVICE)
+
+def extract(ctx: Context, url: str) -> Result:
+    domain, post_id = _parse(url)
+    api = f"https://api-http2.tumblr.com/v2/blog/{domain}/posts/{post_id}/permalink"
+    r = ctx.get(api, params={"api_key": _API_KEY},
+                headers={"User-Agent": _MOBILE_UA})
+    if r.status_code != 200:
+        raise ExtractionError(
+            f"Tumblr API returned HTTP {r.status_code} (post deleted or blog private)",
+            SERVICE)
+    try:
+        element = r.json()["response"]["timeline"]["elements"][0]
+    except (ValueError, LookupError) as e:
+        raise ExtractionError(f"unexpected Tumblr response: {e}", SERVICE) from e
+
+    res = _element_to_result(element, domain, url)
+    if res is None:
+        raise ExtractionError("no video, audio or image in the post", SERVICE)
+    return res
+
+
+def extract_timeline(ctx: Context, url: str, limit: int = 30):
+    """Tumblr blog -> Playlist of its latest posts that contain media."""
+    from ..models import Playlist
+    m = next((p.match(url) for p in PROFILE_PATTERNS if p.match(url)), None)
+    if not m:
+        raise ExtractionError("not a Tumblr blog URL", SERVICE)
+    blog = m.group(1)
+    r = ctx.get(f"https://api-http2.tumblr.com/v2/blog/{blog}/posts",
+                params={"api_key": _API_KEY, "limit": min(limit, 50), "npf": "true"},
+                headers={"User-Agent": _MOBILE_UA})
+    if r.status_code != 200:
+        raise ExtractionError(
+            f"Tumblr API returned HTTP {r.status_code} (blog not found or private)",
+            SERVICE)
+    try:
+        posts = r.json()["response"]["posts"]
+    except (ValueError, LookupError) as e:
+        raise ExtractionError(f"unexpected Tumblr response: {e}", SERVICE) from e
+    entries = []
+    for post in posts:
+        res = _element_to_result(post, blog, post.get("post_url", ""))
+        if res is not None:
+            entries.append(res)
+    if not entries:
+        raise ExtractionError("no posts with media for this blog", SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=blog, source_url=url)

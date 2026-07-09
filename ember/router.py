@@ -38,6 +38,26 @@ def _match_service(url: str):
     return None
 
 
+def _match_profile(url: str):
+    for service in _SERVICES:
+        for pattern in getattr(service, "PROFILE_PATTERNS", ()):
+            if pattern.match(url):
+                return service
+    return None
+
+
+def _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
+               browser_profile, service_name):
+    ctx = make_context(timeout=timeout, proxies=proxies, session=session)
+    if cookies_from_browser:
+        ctx.session.cookies.update(
+            _cookies_from_browser(cookies_from_browser,
+                                  service=service_name, profile=browser_profile))
+    if cookies:
+        ctx.session.cookies.update(cookies)
+    return ctx
+
+
 def can_extract(url: str) -> bool:
     """True if the URL should go to Ember (otherwise to your yt-dlp)."""
     return _match_service(url.strip()) is not None
@@ -125,11 +145,39 @@ def extract_playlist(
             f"playlists are not supported for {service.SERVICE} yet — "
             "use extract() for a single link")
 
-    ctx = make_context(timeout=timeout, proxies=proxies, session=session)
-    if cookies_from_browser:
-        ctx.session.cookies.update(
-            _cookies_from_browser(cookies_from_browser,
-                                  service=service.SERVICE, profile=browser_profile))
-    if cookies:
-        ctx.session.cookies.update(cookies)
+    ctx = _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
+                     browser_profile, service.SERVICE)
     return service.extract_playlist(ctx, url)
+
+
+def supports_timeline(url: str) -> bool:
+    """True if author-timeline extraction is available for the URL."""
+    service = _match_profile(url.strip())
+    return service is not None and hasattr(service, "extract_timeline")
+
+
+def extract_timeline(
+    url: str,
+    *,
+    limit: int = 30,
+    timeout: float = 15.0,
+    proxies: Optional[dict] = None,
+    cookies: Optional[dict] = None,
+    cookies_from_browser: Optional[str] = None,
+    browser_profile: Optional[str] = None,
+    session: Optional[requests.Session] = None,
+) -> Playlist:
+    """List an author's latest posts by profile/channel URL.
+
+    Returns a Playlist of Results (one per post/track/video), up to `limit`.
+    Supported: SoundCloud, VK, Twitch, Tumblr, Rutube, Vimeo, Pinterest,
+    Twitter/X, Instagram. Same auth params as extract().
+    """
+    url = url.strip()
+    service = _match_profile(url)
+    if service is None:
+        raise UnsupportedUrlError(
+            f"not a supported profile/channel URL: {url}")
+    ctx = _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
+                     browser_profile, service.SERVICE)
+    return service.extract_timeline(ctx, url, limit)
