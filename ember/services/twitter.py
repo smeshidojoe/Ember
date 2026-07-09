@@ -232,23 +232,11 @@ def extract(ctx: Context, url: str) -> Result:
                   thumbnail=thumbs[0] if thumbs else None)
 
 
-def _walk_tweets(obj):
-    """Recursively yield tweet dicts that carry mediaDetails."""
-    if isinstance(obj, dict):
-        if obj.get("id_str") and "mediaDetails" in obj:
-            yield obj
-        for v in obj.values():
-            yield from _walk_tweets(v)
-    elif isinstance(obj, list):
-        for v in obj:
-            yield from _walk_tweets(v)
-
-
 def extract_timeline(ctx: Context, url: str, limit: int = 30):
-    """Twitter/X profile -> Playlist of latest posts with media.
+    """Twitter/X profile -> Playlist of latest ORIGINAL posts with media.
 
-    Uses the public syndication timeline (no auth). Empty for protected
-    accounts or when X restricts the widget."""
+    Uses the public syndication timeline (no auth). Skips retweets, quotes
+    and replies. Empty for protected accounts or when X restricts the widget."""
     from ..models import Playlist
     m = PROFILE_PATTERNS[0].match(url)
     if not m:
@@ -266,22 +254,30 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
     except ValueError as e:
         raise ExtractionError(f"unexpected timeline response: {e}", SERVICE) from e
 
+    raw = (((data.get("props") or {}).get("pageProps") or {})
+           .get("timeline") or {}).get("entries") or []
     entries, seen = [], set()
-    for tweet in _walk_tweets(data):
-        tid = tweet["id_str"]
-        if tid in seen:
+    for e in raw:
+        tweet = (e.get("content") or {}).get("tweet") or {}
+        tid = tweet.get("id_str")
+        if not tid or tid in seen:
             continue
         seen.add(tid)
+        # только оригиналы: без ретвитов/цитат/реплаев
+        if ("retweeted_status" in tweet or tweet.get("is_quote_status")
+                or tweet.get("quoted_status") or tweet.get("in_reply_to_status_id_str")):
+            continue
         media_items, thumbs = [], []
-        for entry in tweet.get("mediaDetails") or []:
+        for entry in (tweet.get("extended_entities") or {}).get("media") or []:
             _append_entry(entry, media_items, thumbs)
         if not media_items:
             continue
         author = (tweet.get("user") or {}).get("screen_name") or handle
+        text = (tweet.get("full_text") or tweet.get("text") or "").strip() or None
         entries.append(Result(
             service=SERVICE, kind="single" if len(media_items) == 1 else "gallery",
-            media=media_items, title=(tweet.get("text") or "").strip() or None,
-            author=author, source_url=f"https://x.com/{author}/status/{tid}",
+            media=media_items, title=text, author=author,
+            source_url=f"https://x.com/{author}/status/{tid}",
             filename_hint=safe_filename(f"twitter_{author}_{tid}"),
             thumbnail=thumbs[0] if thumbs else None))
         if len(entries) >= limit:
