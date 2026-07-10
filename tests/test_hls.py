@@ -75,6 +75,13 @@ s0.ts
 """
 
 MEDIA_LIVE = """#EXTM3U
+#EXT-X-PLAYLIST-TYPE:EVENT
+#EXT-X-TARGETDURATION:6
+#EXTINF:6,
+s0.ts
+"""
+
+MEDIA_NOENDLIST = """#EXTM3U
 #EXT-X-TARGETDURATION:6
 #EXTINF:6,
 s0.ts
@@ -91,5 +98,7 @@ def test_parse_media_encrypted():
 
 
 def test_parse_media_live_detection():
-    assert hls.parse_media(MEDIA_LIVE, "https://x/p.m3u8").is_live
-    assert not hls.parse_media(MEDIA_TS, "https://x/p.m3u8").is_live
+    assert hls.parse_media(MEDIA_LIVE, "https://x/p.m3u8").is_live          # EVENT
+    assert not hls.parse_media(MEDIA_TS, "https://x/p.m3u8").is_live        # ENDLIST
+    # no ENDLIST + no type -> NOT flagged live (avoid blocking valid VOD)
+    assert not hls.parse_media(MEDIA_NOENDLIST, "https://x/p.m3u8").is_live

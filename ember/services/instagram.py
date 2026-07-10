@@ -98,20 +98,20 @@ def _from_embed(ctx: Context, shortcode: str) -> Optional[dict]:
         headers={"Referer": "https://www.instagram.com/"})
     if r.status_code != 200:
         return None
-    html = r.text
-    # внутри страницы бывает экранированный JSON с shortcode_media
-    m = re.search(r'\\"shortcode_media\\":(\{.*?\})\s*\}\s*\]', html)
+    # снимаем JS-экранирование кавычек/слэшей; \uXXXX разберёт json.loads
+    html = r.text.replace('\\"', '"').replace("\\/", "/")
+    m = re.search(r'"shortcode_media":(\{.*?\})\s*\}\s*\]', html)
     if m:
         try:
-            unescaped = m.group(1).encode().decode("unicode_escape")
-            return json.loads(unescaped)
-        except (ValueError, UnicodeDecodeError):
+            return json.loads(m.group(1))
+        except ValueError:
             pass
-    # хотя бы video_url напрямую
-    m = re.search(r'\\"video_url\\":\\"([^"\\]+)\\"', html)
+    m = re.search(r'"video_url":"([^"]+)"', html)
     if m:
-        video_url = m.group(1).encode().decode("unicode_escape")
-        return {"is_video": True, "video_url": video_url}
+        try:
+            return {"is_video": True, "video_url": json.loads(f'"{m.group(1)}"')}
+        except ValueError:
+            return {"is_video": True, "video_url": m.group(1)}
     return None
 
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 import glob
 import hashlib
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -26,6 +27,8 @@ import tempfile
 from typing import List, Optional
 
 from .errors import EmberError
+
+log = logging.getLogger(__name__)
 
 
 class NativeUnsupported(Exception):
@@ -419,7 +422,8 @@ def read_chromium_windows(browser: str, profile: Optional[str], domains: List[st
             nonce, ct, tag = enc[3:15], enc[15:-16], enc[-16:]
             try:
                 raw = aes_gcm_decrypt(key, nonce, ct, tag)
-            except Exception:
+            except Exception as e:
+                log.debug("cookie %s decrypt failed: %s", name, e)
                 continue
             # новые Chromium добавляют спереди 32-байтовый SHA-256 хэш домена
             if raw[:32] == hashlib.sha256((host or "").encode()).digest():
@@ -470,7 +474,8 @@ def _read_cbc_cookies(db: str, domains: List[str], keys: dict) -> dict:
         if enc[:3] in (b"v10", b"v11") and key:
             try:
                 raw = _pkcs7_unpad(aes_cbc_decrypt(key, iv, enc[3:]))
-            except Exception:
+            except Exception as e:
+                log.debug("cookie %s decrypt failed: %s", name, e)
                 continue
             out[name] = _strip_domain_hash(raw, host).decode("utf-8", "replace")
         elif not enc and plain:

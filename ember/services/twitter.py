@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Optional
 
 from ..errors import ExtractionError
 from ..http import Context
@@ -25,7 +24,9 @@ PATTERNS = [
 ]
 
 PROFILE_PATTERNS = [
-    re.compile(r"https?://(?:www\.|mobile\.)?(?:twitter|x)\.com/(?!i/|home$|search)"
+    re.compile(r"https?://(?:www\.|mobile\.)?(?:twitter|x)\.com/"
+               r"(?!(?:i|home|search|explore|messages|notifications|settings|"
+               r"intent|hashtag|compose)(?:/|$))"
                r"([A-Za-z0-9_]{1,15})/?$"),
 ]
 

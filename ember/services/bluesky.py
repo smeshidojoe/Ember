@@ -7,7 +7,6 @@ Video is served as an HLS playlist, images as direct CDN links.
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin
 
 from ..errors import ExtractionError
 from ..http import Context

@@ -92,3 +92,30 @@ def make_context(
     if proxies:
         session.proxies.update(proxies)
     return Context(session=session, timeout=timeout, retries=retries)
+
+
+def gather(fn, items, workers: int = 6, limit: Optional[int] = None) -> list:
+    """Run fn over items concurrently, keep order, drop items that raise.
+
+    Used by timelines to fetch N posts in parallel (requests.Session is
+    safe for concurrent GETs). ponytail: fixed pool, fine for limit~30.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from .errors import EmberError
+
+    def safe(x):
+        try:
+            return fn(x)
+        except EmberError as e:
+            log.debug("gather item failed: %s", e)
+            return None
+
+    out = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for r in ex.map(safe, items):
+            if r is not None:
+                out.append(r)
+                if limit and len(out) >= limit:
+                    break
+    return out

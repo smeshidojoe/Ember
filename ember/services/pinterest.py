@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from ..errors import ExtractionError
-from ..http import Context
+from ..http import Context, gather
 from ..models import Media, Result, safe_filename
 
 SERVICE = "pinterest"
@@ -20,7 +20,9 @@ PATTERNS = [
 ]
 
 PROFILE_PATTERNS = [
-    re.compile(r"https?://(?:[\w-]+\.)?pinterest\.[\w.]+/(?!pin/)([\w-]+)(?:/([\w-]+))?/?$"),
+    re.compile(r"https?://(?:[\w-]+\.)?pinterest\.[\w.]+/"
+               r"(?!(?:pin|ideas|today|search|settings)/)"
+               r"([\w-]+)(?:/([\w-]+))?/?$"),
 ]
 
 _VIDEO_RE = re.compile(r'"url":"(https://v1\.pinimg\.com/videos/[^"]+?\.mp4)"')
@@ -100,17 +102,9 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
     r = ctx.get(rss)
     if r.status_code != 200:
         raise ExtractionError(f"could not read Pinterest feed (HTTP {r.status_code})", SERVICE)
-    seen, entries = set(), []
-    for pin_id in re.findall(r"/pin/(\d+)", r.text):
-        if pin_id in seen:
-            continue
-        seen.add(pin_id)
-        try:
-            entries.append(extract(ctx, f"https://www.pinterest.com/pin/{pin_id}/"))
-        except ExtractionError:
-            continue
-        if len(entries) >= limit:
-            break
+    seen = dict.fromkeys(re.findall(r"/pin/(\d+)", r.text))  # dedup, keep order
+    urls = [f"https://www.pinterest.com/pin/{p}/" for p in seen][:limit]
+    entries = gather(lambda u: extract(ctx, u), urls)
     if not entries:
         raise ExtractionError("no pins in this Pinterest feed", SERVICE)
     return Playlist(service=SERVICE, entries=entries, author=user, source_url=url)

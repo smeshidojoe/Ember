@@ -82,14 +82,14 @@ def _print_result(result) -> None:
     print(f"service:  {result.service}")
     print(f"type:     {result.kind}")
     print(f"author:   {result.author or '-'}")
-    print(f"title:    {(result.title or '-')[:100]}")
+    print(f"title:    {result.title or '-'}")
     print(f"filename: {result.filename_hint}")
     if result.thumbnail:
-        print(f"thumb:    {result.thumbnail[:100]}")
+        print(f"thumb:    {result.thumbnail}")
     for i, m in enumerate(result.media, 1):
         q = f" [{m.quality}]" if m.quality else ""
         print(f"  {i}. {m.kind}{q} .{m.ext}")
-        print(f"     {m.url[:150]}")
+        print(f"     {m.url}")
         qs = available_qualities(m) if m.variants else []
         if qs:
             print(f"     qualities: {qs}")
@@ -241,7 +241,7 @@ def _render_name(template: str, result) -> str:
 
 
 def _list_formats(result) -> None:
-    print(f"# {result.service}: {(result.title or result.filename_hint)[:70]}")
+    print(f"# {result.service}: {result.title or result.filename_hint}")
     for i, m in enumerate(result.media, 1):
         qs = available_qualities(m)
         label = ", ".join(f"{h}p" for h in qs) if qs else (m.quality or "single")
@@ -251,6 +251,13 @@ def _list_formats(result) -> None:
 
 
 def main() -> int:
+    # Windows-консоль часто cp1251/cp866 -> не-ASCII падает/рисуется квадратами.
+    # Данные в str корректны; правим только вывод.
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     args = _build_parser().parse_args()
     _setup_logging(args.verbose)
 
@@ -326,7 +333,7 @@ def main() -> int:
         out_dir = args.path or "."
         single = len(results) == 1 and len(urls) == 1
         for r in results:
-            print(f"downloading: {(r.title or r.filename_hint)[:70]}")
+            print(f"downloading: {r.title or r.filename_hint}")
             if args.output and "%(" in args.output:
                 name = _render_name(args.output, r)      # шаблон — на каждый результат
             elif args.output and single:

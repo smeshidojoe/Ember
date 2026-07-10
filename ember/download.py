@@ -212,9 +212,10 @@ def _pick_progressive_url(media: Media, max_height: Optional[int]) -> str:
     if not media.variants or not max_height:
         return media.url
     ok = [v for v in media.variants if (v.height or 0) <= max_height]
-    pool = ok or media.variants
-    best = max(pool, key=lambda v: v.height or 0)
-    return best.url
+    if ok:
+        return max(ok, key=lambda v: v.height or 0).url
+    # ничего <= cap: наименьший, а не наибольший
+    return min(media.variants, key=lambda v: v.height or 0).url
 
 
 def available_qualities(media: Media, ctx: Optional[Context] = None) -> List[int]:
@@ -362,7 +363,7 @@ def download(result: Result, out_dir: str = ".", *,
             ap = Path(tmp) / f"a.{audio.ext}"
             download_media(video, str(vp), ctx=ctx, max_height=max_height,
                            concurrency=concurrency, on_progress=on_progress)
-            download_media(audio, str(ap), ctx=ctx)
+            download_media(audio, str(ap), ctx=ctx, on_progress=on_progress)
             out = Path(out_dir) / f"{base}.mp4"
             out.parent.mkdir(parents=True, exist_ok=True)
             _mux(vp, ap, out, meta)

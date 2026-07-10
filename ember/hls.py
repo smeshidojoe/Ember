@@ -42,11 +42,13 @@ class HlsMaster:
         """Best variant; with max_height, the best at or below it."""
         if not self.variants:
             return None
-        pool = self.variants
         if max_height:
-            capped = [v for v in pool if (v.height or 0) <= max_height]
-            pool = capped or pool
-        return max(pool, key=lambda v: (v.height or 0, v.bandwidth))
+            capped = [v for v in self.variants if (v.height or 0) <= max_height]
+            if capped:
+                return max(capped, key=lambda v: (v.height or 0, v.bandwidth))
+            # ничего <= cap: берём наименьший из имеющихся, а не наибольший
+            return min(self.variants, key=lambda v: (v.height or 0, v.bandwidth))
+        return max(self.variants, key=lambda v: (v.height or 0, v.bandwidth))
 
     def audio_url_for(self, variant: HlsVariant) -> Optional[str]:
         """URL of the separate audio track for a variant (if any)."""
@@ -137,7 +139,9 @@ def parse_media(text: str, base_url: str) -> HlsMedia:
                 media.is_fmp4 = True
         elif not line.startswith("#"):
             media.segments.append(urljoin(base_url, line))
-    media.is_live = (not has_endlist) and playlist_type != "VOD"
+    # только явный live-сигнал; VOD без ENDLIST (бывает у CDN) не блокируем
+    # ponytail: EVENT-only; типизированный live без метки скачается частично
+    media.is_live = playlist_type == "EVENT" and not has_endlist
     return media
 
 

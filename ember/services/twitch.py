@@ -12,7 +12,7 @@ import re
 from urllib.parse import quote
 
 from ..errors import ExtractionError
-from ..http import Context
+from ..http import Context, gather
 from ..models import Media, Result, safe_filename
 
 SERVICE = "twitch"
@@ -99,15 +99,10 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
     user = (data.get("data") or {}).get("user")
     if not user:
         raise ExtractionError(f"channel {login} not found", SERVICE)
-    entries = []
-    for edge in (user.get("clips") or {}).get("edges") or []:
-        slug = (edge.get("node") or {}).get("slug")
-        if not slug:
-            continue
-        try:
-            entries.append(extract(ctx, f"https://clips.twitch.tv/{slug}"))
-        except ExtractionError:
-            continue
+    urls = [f"https://clips.twitch.tv/{e['node']['slug']}"
+            for e in (user.get("clips") or {}).get("edges") or []
+            if (e.get("node") or {}).get("slug")]
+    entries = gather(lambda u: extract(ctx, u), urls)
     if not entries:
         raise ExtractionError("no clips for this channel", SERVICE)
     return Playlist(service=SERVICE, entries=entries, author=login, source_url=url)

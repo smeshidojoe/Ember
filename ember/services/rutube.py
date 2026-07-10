@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from ..errors import ExtractionError
-from ..http import Context
+from ..http import Context, gather
 from ..models import Media, Result, Subtitle, safe_filename
 
 SERVICE = "rutube"
@@ -71,8 +71,8 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
     if not m:
         raise ExtractionError("not a Rutube channel URL", SERVICE)
     person_id = m.group(1)
-    entries, page = [], 1
-    while len(entries) < limit and page <= 5:
+    vids, page = [], 1
+    while len(vids) < limit and page <= 5:
         r = ctx.get(f"https://rutube.ru/api/video/person/{person_id}/",
                     params={"page": page})
         if r.status_code != 200:
@@ -80,17 +80,10 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
         results = r.json().get("results") or []
         if not results:
             break
-        for v in results:
-            vid = v.get("id")
-            if not vid:
-                continue
-            try:
-                entries.append(extract(ctx, f"https://rutube.ru/video/{vid}/"))
-            except ExtractionError:
-                continue
-            if len(entries) >= limit:
-                break
+        vids += [v["id"] for v in results if v.get("id")]
         page += 1
+    urls = [f"https://rutube.ru/video/{v}/" for v in vids[:limit]]
+    entries = gather(lambda u: extract(ctx, u), urls)
     if not entries:
         raise ExtractionError("no videos for this Rutube channel", SERVICE)
     return Playlist(service=SERVICE, entries=entries, author=person_id, source_url=url)

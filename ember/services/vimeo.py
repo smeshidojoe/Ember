@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from ..errors import ExtractionError
-from ..http import Context
+from ..http import Context, gather
 from ..models import Media, MediaVariant, Result, Subtitle, safe_filename
 
 SERVICE = "vimeo"
@@ -123,15 +123,8 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
         videos = r.json()
     except ValueError as e:
         raise ExtractionError(f"unexpected Vimeo response: {e}", SERVICE) from e
-    entries = []
-    for v in videos[:limit]:
-        vid = v.get("id")
-        if not vid:
-            continue
-        try:
-            entries.append(extract(ctx, f"https://vimeo.com/{vid}"))
-        except ExtractionError:
-            continue
+    urls = [f"https://vimeo.com/{v['id']}" for v in videos[:limit] if v.get("id")]
+    entries = gather(lambda u: extract(ctx, u), urls)
     if not entries:
         raise ExtractionError("no videos for this Vimeo user", SERVICE)
     return Playlist(service=SERVICE, entries=entries, author=user, source_url=url)

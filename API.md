@@ -24,8 +24,17 @@ Extract direct media links + metadata from a post URL.
 ### `extract_playlist(url, **same kwargs) -> Playlist`
 Extract a set/playlist (currently SoundCloud sets). Single link → `Playlist` with one entry.
 
+### `extract_timeline(url, *, limit=30, **same kwargs) -> Playlist`
+List an author's latest posts by profile/channel URL. Returns a `Playlist` of
+`Result`s (one per post/track/video), up to `limit`. Supported: SoundCloud, VK,
+Twitch, Tumblr, Rutube, Vimeo, Pinterest, Twitter/X, Instagram. Instagram and
+Twitter/X may need cookies or a non-blocked IP.
+
 ### `can_extract(url) -> bool`
 True if the URL matches a supported service (else hand it to yt-dlp).
+
+### `supports_playlist(url) -> bool` / `supports_timeline(url) -> bool`
+Whether playlist / author-timeline extraction is available for the URL.
 
 ### `supports_playlist(url) -> bool`
 True if playlist extraction is available for the URL.

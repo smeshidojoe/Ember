@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 import requests
-
-import logging
 
 from .cookies import cookies_from_browser as _cookies_from_browser
 from .errors import EmberError, UnsupportedUrlError
 from .http import make_context
 from .models import Playlist, Result
-
-log = logging.getLogger(__name__)
 from .services import (bluesky, facebook, instagram, newgrounds, ok, pinterest,
                        reddit, rutube, soundcloud, tiktok, tumblr, twitch,
                        twitter, vimeo, vk)
+
+log = logging.getLogger(__name__)
 
 _SERVICES = [
     tiktok, twitter, instagram, reddit,
