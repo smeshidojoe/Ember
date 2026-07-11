@@ -55,9 +55,22 @@ def _parse_cookies_file(path: str) -> dict:
     return cookies
 
 
+def _bar(frac: float, width: int = 30) -> str:
+    filled = int(frac * width)
+    if filled >= width:
+        return "=" * width
+    return "=" * filled + ">" + "-" * (width - filled - 1)
+
+
+def _eta(seconds: float) -> str:
+    s = int(seconds)
+    return f"{s // 60:02d}m{s % 60:02d}s"
+
+
 def _make_progress_printer():
-    """Returns a callback that draws a simple one-line progress indicator."""
-    state = {"last": 0.0}
+    """One-line progress: MiB / MiB [bar] pct speed ETA (CLI only)."""
+    state = {"last": 0.0, "start": time.time()}
+    MiB = 1048576
 
     def cb(p: DownloadProgress):
         now = time.time()
@@ -67,14 +80,20 @@ def _make_progress_printer():
         if now - state["last"] < 0.1:
             return
         state["last"] = now
-        mb = p.downloaded / 1048576
+        elapsed = now - state["start"] or 1e-9
+        speed = p.downloaded / elapsed / MiB
+        dl = p.downloaded / MiB
         if p.total:
-            print(f"\r  {p.fraction * 100:5.1f}%  {mb:7.1f} MB", end="", flush=True)
-        elif p.segments_total:
-            print(f"\r  segment {p.segments_done}/{p.segments_total}  {mb:7.1f} MB",
+            frac = p.fraction or 0
+            eta = (p.total - p.downloaded) / (speed * MiB) if speed else 0
+            print(f"\r  {dl:.2f} MiB / {p.total / MiB:.2f} MiB [{_bar(frac)}]"
+                  f" {frac * 100:6.2f}% {speed:.2f} MiB/s {_eta(eta)}   ",
                   end="", flush=True)
+        elif p.segments_total:
+            print(f"\r  segment {p.segments_done}/{p.segments_total}"
+                  f"  {dl:.2f} MiB  {speed:.2f} MiB/s   ", end="", flush=True)
         else:
-            print(f"\r  {mb:7.1f} MB", end="", flush=True)
+            print(f"\r  {dl:.2f} MiB  {speed:.2f} MiB/s   ", end="", flush=True)
 
     return cb
 
@@ -374,7 +393,7 @@ def main() -> int:
                 _report_error(str(e), prefix="  error")
                 rc = 1
                 continue
-            print("\r" + " " * 40, end="")
+            print("\r" + " " * 90, end="")
             for p in paths:
                 print(f"\r  saved: {p}")
     return rc

@@ -117,6 +117,23 @@ falling back to yt-dlp / browser_cookie3.
 - `stage: str` — `"download"` | `"mux"` | `"metadata"`.
 - `fraction: float | None` (property) — 0..1 or None if unknown.
 
+Speed and ETA are not fields — compute them with your own timer (the CLI does
+the same):
+
+```python
+import time
+start = time.time()
+
+def on_progress(p: ember.DownloadProgress):
+    if not p.total:                      # HLS / unknown size: no % or ETA
+        return
+    speed = p.downloaded / (time.time() - start)        # bytes/sec
+    eta = (p.total - p.downloaded) / speed if speed else 0
+    print(f"{p.fraction*100:5.1f}%  {speed/1048576:.2f} MiB/s  ETA {int(eta)}s")
+
+ember.download(result, "downloads/", on_progress=on_progress)
+```
+
 ## Errors
 
 `EmberError` (base) → `UnsupportedUrlError`, `NetworkError`, `ExtractionError`.
