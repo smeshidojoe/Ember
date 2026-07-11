@@ -12,7 +12,7 @@ import re
 from .. import cache
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, safe_filename
+from ..models import Media, Result, safe_filename, to_timestamp
 
 SERVICE = "soundcloud"
 
@@ -98,7 +98,10 @@ def _track_result(ctx: Context, track: dict, url: str = "") -> Result:
         service=SERVICE, kind="single",
         media=[Media(kind="audio", url=file_url, ext="m3u8" if is_hls else "mp3")],
         title=title, author=author, source_url=url or track.get("permalink_url", ""),
-        filename_hint=hint, thumbnail=track.get("artwork_url"))
+        filename_hint=hint, thumbnail=track.get("artwork_url"),
+        duration=(track.get("duration") or 0) / 1000 or None,
+        timestamp=to_timestamp(track.get("created_at")),
+        view_count=track.get("playback_count"), like_count=track.get("likes_count"))
 
 
 def extract(ctx: Context, url: str) -> Result:

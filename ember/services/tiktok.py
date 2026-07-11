@@ -13,7 +13,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, Subtitle, safe_filename
+from ..models import Media, Result, Subtitle, safe_filename, to_timestamp
 
 SERVICE = "tiktok"
 
@@ -121,5 +121,9 @@ def extract(ctx: Context, url: str) -> Result:
         source_url=url,
         filename_hint=hint,
         thumbnail=video.get("cover") or video.get("originCover"),
+        duration=video.get("duration"),
+        timestamp=to_timestamp(item.get("createTime")),
+        view_count=(item.get("stats") or {}).get("playCount"),
+        like_count=(item.get("stats") or {}).get("diggCount"),
         subtitles=subtitles,
     )

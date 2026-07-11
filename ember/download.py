@@ -12,6 +12,7 @@ native container (.ts) or report that ffmpeg is required.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -56,6 +57,16 @@ ProgressCb = Callable[[DownloadProgress], None]
 
 def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
+
+
+def probe_size(media: Media, ctx: Optional[Context] = None) -> Optional[int]:
+    """File size in bytes before downloading, from the Content-Length header.
+    One request, no body (same 403 profile as the actual download)."""
+    ctx = ctx or make_context()
+    r = ctx.get(media.url, headers=media.http_headers or None, stream=True)
+    size = r.headers.get("Content-Length")
+    r.close()
+    return int(size) if size and size.isdigit() else None
 
 
 # ----------------------------------------------------------------------------
@@ -338,12 +349,15 @@ def download(result: Result, out_dir: str = ".", *,
              on_progress: Optional[ProgressCb] = None,
              audio_only: bool = False,
              embed_metadata: bool = False,
-             subtitles: bool = False) -> List[str]:
+             subtitles: bool = False,
+             thumbnail: bool = False,
+             write_info: bool = False) -> List[str]:
     """Download a whole Result. Returns paths of the created files.
 
     filename — base file name without extension; if omitted, taken from
     metadata (result.filename_hint, i.e. from the site).
-    subtitles=True — also download subtitle tracks alongside.
+    subtitles/thumbnail — also save subtitle tracks / the cover image.
+    write_info=True — save a {base}.info.json sidecar with all metadata.
     """
     ctx = ctx or make_context()
     base = safe_filename(filename) if filename else (result.filename_hint or "media")
@@ -388,4 +402,18 @@ def download(result: Result, out_dir: str = ".", *,
 
     if subtitles and result.subtitles:
         written += _download_subtitles(result, out_dir, base, ctx)
+    if thumbnail and result.thumbnail:
+        ext = os.path.splitext(result.thumbnail.split("?")[0])[1].lstrip(".") or "jpg"
+        tp = Path(out_dir) / f"{base}.{ext}"
+        try:
+            _stream_to_file(ctx, Media(kind="image", url=result.thumbnail, ext=ext),
+                            tp, None, False)
+            written.append(str(tp))
+        except (NetworkError, OSError) as e:
+            log.warning("thumbnail failed: %s", e)
+    if write_info:
+        ip = Path(out_dir) / f"{base}.info.json"
+        ip.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2),
+                      encoding="utf-8")
+        written.append(str(ip))
     return written

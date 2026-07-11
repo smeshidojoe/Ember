@@ -26,7 +26,7 @@ from .errors import (
 )
 from .cookies import cookies_from_browser
 from .download import (DownloadProgress, available_qualities, download,
-                       download_media, ffmpeg_available)
+                       download_media, ffmpeg_available, probe_size)
 from .models import Media, MediaVariant, Playlist, Result, Subtitle
 from .router import (can_extract, extract, extract_playlist, extract_timeline,
                      supported_services, supports_playlist, supports_timeline)
@@ -46,6 +46,7 @@ __all__ = [
     "download_media",
     "available_qualities",
     "ffmpeg_available",
+    "probe_size",
     "DownloadProgress",
     "MediaVariant",
     "Playlist",

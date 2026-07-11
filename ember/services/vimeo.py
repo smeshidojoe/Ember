@@ -95,7 +95,7 @@ def extract(ctx: Context, url: str) -> Result:
             media=[Media(kind="video", url=best["url"], ext="mp4",
                          quality=best.get("quality"), variants=variants)],
             title=title, author=author, source_url=url, filename_hint=hint,
-            thumbnail=thumb, subtitles=subs)
+            thumbnail=thumb, duration=video.get("duration"), subtitles=subs)
 
     hls = (files.get("hls") or {}).get("cdns") or {}
     for cdn in hls.values():
@@ -104,7 +104,7 @@ def extract(ctx: Context, url: str) -> Result:
                 service=SERVICE, kind="single",
                 media=[Media(kind="video", url=cdn["url"], ext="m3u8")],
                 title=title, author=author, source_url=url, filename_hint=hint,
-                thumbnail=thumb, subtitles=subs)
+                thumbnail=thumb, duration=video.get("duration"), subtitles=subs)
 
     raise ExtractionError("Vimeo response has neither mp4 nor HLS stream", SERVICE)
 

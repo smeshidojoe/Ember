@@ -211,8 +211,15 @@ def _node_to_result(data: dict, url: str, shortcode: str = "") -> Optional[Resul
     sc = shortcode or data.get("shortcode") or ""
     hint = safe_filename(f"instagram_{author or 'post'}_{sc}")
     kind = "single" if len(media_items) == 1 else "gallery"
+    likes = data.get("like_count")
+    if likes is None:
+        likes = (data.get("edge_media_preview_like") or {}).get("count")
     return Result(service=SERVICE, kind=kind, media=media_items, title=title,
-                  author=author, source_url=url, filename_hint=hint)
+                  author=author, source_url=url, filename_hint=hint,
+                  duration=data.get("video_duration"),
+                  timestamp=data.get("taken_at") or data.get("taken_at_timestamp"),
+                  view_count=data.get("view_count") or data.get("play_count"),
+                  like_count=likes)
 
 
 def extract(ctx: Context, url: str) -> Result:

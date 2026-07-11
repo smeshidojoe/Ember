@@ -76,6 +76,10 @@ class Result:
     source_url: str = ""
     filename_hint: Optional[str] = None    # safe file name without extension
     thumbnail: Optional[str] = None        # cover/preview URL, if any
+    duration: Optional[float] = None       # seconds, if the service reports it
+    timestamp: Optional[int] = None        # unix seconds of publication
+    view_count: Optional[int] = None
+    like_count: Optional[int] = None
     subtitles: List[Subtitle] = field(default_factory=list)
 
     @property
@@ -91,6 +95,10 @@ class Result:
             "source_url": self.source_url,
             "filename_hint": self.filename_hint,
             "thumbnail": self.thumbnail,
+            "duration": self.duration,
+            "timestamp": self.timestamp,
+            "view_count": self.view_count,
+            "like_count": self.like_count,
             "media": [m.to_dict() for m in self.media],
             "subtitles": [{"lang": s.lang, "url": s.url, "ext": s.ext}
                           for s in self.subtitles],
@@ -115,6 +123,19 @@ class Playlist:
             "source_url": self.source_url,
             "entries": [r.to_dict() for r in self.entries],
         }
+
+
+def to_timestamp(v) -> Optional[int]:
+    """Unix seconds from an int/float or an ISO-8601 string; else None."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    try:
+        from datetime import datetime
+        return int(datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp())
+    except (ValueError, TypeError):
+        return None
 
 
 _FILENAME_BAD = re.compile(r'[\\/:*?"<>|\x00-\x1f]')

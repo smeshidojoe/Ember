@@ -10,7 +10,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, safe_filename
+from ..models import Media, Result, safe_filename, to_timestamp
 
 SERVICE = "bluesky"
 
@@ -48,7 +48,8 @@ def extract(ctx: Context, url: str) -> Result:
     def result(kind, media, thumbnail=None):
         return Result(service=SERVICE, kind=kind, media=media, title=title,
                       author=author, source_url=url, filename_hint=hint,
-                      thumbnail=thumbnail)
+                      thumbnail=thumbnail, timestamp=to_timestamp(record.get("createdAt")),
+                      like_count=post.get("likeCount"))
 
     # видео
     if "video" in etype:

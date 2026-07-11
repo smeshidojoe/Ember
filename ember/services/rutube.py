@@ -10,7 +10,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context, gather
-from ..models import Media, Result, Subtitle, safe_filename
+from ..models import Media, Result, Subtitle, safe_filename, to_timestamp
 
 SERVICE = "rutube"
 
@@ -61,7 +61,8 @@ def extract(ctx: Context, url: str) -> Result:
         service=SERVICE, kind="single",
         media=[Media(kind="video", url=m3u8, ext="m3u8")],
         title=title, author=author, source_url=url, filename_hint=hint,
-        thumbnail=thumb, subtitles=subtitles)
+        thumbnail=thumb, duration=data.get("duration"), subtitles=subtitles,
+        timestamp=to_timestamp(data.get("created_ts")), view_count=data.get("hits"))
 
 
 def extract_timeline(ctx: Context, url: str, limit: int = 30):

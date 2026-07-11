@@ -280,7 +280,8 @@ def extract_timeline(ctx: Context, url: str, limit: int = 30):
             media=media_items, title=text, author=author,
             source_url=f"https://x.com/{author}/status/{tid}",
             filename_hint=safe_filename(f"twitter_{author}_{tid}"),
-            thumbnail=thumbs[0] if thumbs else None))
+            thumbnail=thumbs[0] if thumbs else None,
+            like_count=tweet.get("favorite_count")))
         if len(entries) >= limit:
             break
     if not entries:

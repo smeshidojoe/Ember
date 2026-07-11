@@ -44,7 +44,7 @@ List of service names.
 
 ## Download
 
-### `download(result, out_dir=".", *, filename=None, ctx=None, max_height=None, concurrency=1, on_progress=None, audio_only=False, embed_metadata=False, subtitles=False) -> list[str]`
+### `download(result, out_dir=".", *, filename=None, ctx=None, max_height=None, concurrency=1, on_progress=None, audio_only=False, embed_metadata=False, subtitles=False, thumbnail=False, write_info=False) -> list[str]`
 Download a whole `Result`. Returns paths of written files.
 - **filename** `str | None` — base name without extension (default: from metadata).
 - **max_height** `int | None` — cap quality (e.g. `720`).
@@ -53,6 +53,8 @@ Download a whole `Result`. Returns paths of written files.
 - **audio_only** `bool` — extract audio (needs ffmpeg).
 - **embed_metadata** `bool` — write title/author (needs ffmpeg).
 - **subtitles** `bool` — also download subtitle tracks.
+- **thumbnail** `bool` — also save the cover image.
+- **write_info** `bool` — save a `{base}.info.json` sidecar with all metadata.
 - HLS: single stream assembles without ffmpeg; separate audio/video and `kind="merge"` need ffmpeg.
 
 ### `download_media(media, out_path, *, ctx=None, max_height=None, concurrency=1, on_progress=None, resume=True, audio_only=False, meta=None) -> str`
@@ -60,6 +62,10 @@ Download one `Media`. Returns the actual path (extension may become `.ts` withou
 
 ### `available_qualities(media, ctx=None) -> list[int]`
 Available heights, e.g. `[1080, 720, 480]`. Parses the HLS master for m3u8 media.
+
+### `probe_size(media, ctx=None) -> int | None`
+File size in bytes before downloading (from `Content-Length`). One request, no
+body — same access profile as the real download.
 
 ### `ffmpeg_available() -> bool`
 Whether `ffmpeg` is on PATH.
@@ -81,6 +87,9 @@ falling back to yt-dlp / browser_cookie3.
 - `title: str | None`, `author: str | None`, `source_url: str`.
 - `filename_hint: str | None` — safe base name.
 - `thumbnail: str | None` — preview URL.
+- `duration: float | None` — seconds, when the service reports it (video/audio services).
+- `timestamp: int | None` — unix seconds of publication, when reported.
+- `view_count: int | None`, `like_count: int | None` — when reported.
 - `subtitles: list[Subtitle]`.
 - `requires_merge: bool` (property) — True when `kind == "merge"`.
 - `to_dict() -> dict`.

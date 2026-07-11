@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from ..errors import ExtractionError
 from ..http import Context, gather
-from ..models import Media, Result, safe_filename
+from ..models import Media, Result, safe_filename, to_timestamp
 
 SERVICE = "twitch"
 
@@ -50,8 +50,9 @@ def extract(ctx: Context, url: str) -> Result:
     # 1) метаданные и качества
     info = _gql(ctx, {
         "query": (
-            "{ clip(slug: \"%s\") { title durationSeconds thumbnailURL "
-            "broadcaster { displayName } videoQualities { quality sourceURL } } }" % slug)
+            "{ clip(slug: \"%s\") { title durationSeconds thumbnailURL viewCount "
+            "createdAt broadcaster { displayName } "
+            "videoQualities { quality sourceURL } } }" % slug)
     })
     clip = ((info.get("data") or {}).get("clip")) or {}
     qualities = clip.get("videoQualities") or []
@@ -83,7 +84,8 @@ def extract(ctx: Context, url: str) -> Result:
         media=[Media(kind="video", url=video_url, ext="mp4",
                      quality=best.get("quality"))],
         title=title, author=author, source_url=url, filename_hint=hint,
-        thumbnail=clip.get("thumbnailURL"))
+        thumbnail=clip.get("thumbnailURL"), duration=clip.get("durationSeconds"),
+        timestamp=to_timestamp(clip.get("createdAt")), view_count=clip.get("viewCount"))
 
 
 def extract_timeline(ctx: Context, url: str, limit: int = 30):

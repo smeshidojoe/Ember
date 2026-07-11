@@ -54,7 +54,8 @@ def _element_to_result(element: dict, domain: str, url: str):
     def result(kind, media):
         return Result(service=SERVICE, kind=kind, media=media, title=title,
                       author=author, source_url=url or element.get("post_url", ""),
-                      filename_hint=hint)
+                      filename_hint=hint, timestamp=element.get("timestamp"),
+                      like_count=element.get("note_count"))
 
     # NPF format (element.content / trail) — collect ALL blocks
     npf = []

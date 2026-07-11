@@ -12,7 +12,7 @@ import re
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, Result, safe_filename
+from ..models import Media, Result, safe_filename, to_timestamp
 
 SERVICE = "reddit"
 
@@ -88,7 +88,10 @@ def extract(ctx: Context, url: str) -> Result:
 
     def result(kind, media):
         return Result(service=SERVICE, kind=kind, media=media, title=title,
-                      author=author, source_url=url, filename_hint=hint)
+                      author=author, source_url=url, filename_hint=hint,
+                      timestamp=to_timestamp(post.get("created_utc")),
+                      view_count=post.get("view_count"),
+                      like_count=post.get("ups"))
 
     # галерея
     if post.get("is_gallery") and post.get("media_metadata"):

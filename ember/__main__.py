@@ -13,7 +13,8 @@ import sys
 import time
 
 from . import (DownloadProgress, EmberError, available_qualities, download,
-               extract, extract_playlist, extract_timeline, supports_playlist)
+               extract, extract_playlist, extract_timeline, probe_size,
+               supports_playlist)
 from .http import make_context
 
 # browsers understood by --cookies-from-browser (same set as yt-dlp)
@@ -78,11 +79,20 @@ def _make_progress_printer():
     return cb
 
 
-def _print_result(result) -> None:
+def _print_result(result, size=False, ctx=None) -> None:
     print(f"service:  {result.service}")
     print(f"type:     {result.kind}")
     print(f"author:   {result.author or '-'}")
     print(f"title:    {result.title or '-'}")
+    if result.duration:
+        print(f"duration: {int(result.duration // 60)}:{int(result.duration % 60):02d}")
+    if result.timestamp:
+        from datetime import datetime, timezone
+        print(f"date:     {datetime.fromtimestamp(result.timestamp, timezone.utc):%Y-%m-%d}")
+    if result.view_count is not None:
+        print(f"views:    {result.view_count}")
+    if result.like_count is not None:
+        print(f"likes:    {result.like_count}")
     print(f"filename: {result.filename_hint}")
     if result.thumbnail:
         print(f"thumb:    {result.thumbnail}")
@@ -93,6 +103,10 @@ def _print_result(result) -> None:
         qs = available_qualities(m) if m.variants else []
         if qs:
             print(f"     qualities: {qs}")
+        if size:
+            b = probe_size(m, ctx)
+            if b:
+                print(f"     size: {b / 1048576:.1f} MB")
     if result.subtitles:
         print(f"subs:     {', '.join(s.lang for s in result.subtitles)}")
     if result.requires_merge:
@@ -165,6 +179,12 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="keep audio only (needs ffmpeg); implies --download")
     p.add_argument("--subs", action="store_true",
                    help="also download subtitle tracks; implies --download")
+    p.add_argument("--thumbnail", action="store_true",
+                   help="also save the cover image; implies --download")
+    p.add_argument("--write-info", action="store_true", dest="write_info",
+                   help="save a .info.json sidecar with all metadata; implies --download")
+    p.add_argument("--size", action="store_true",
+                   help="print file size before downloading (extra request)")
     p.add_argument("--concurrency", type=int, default=1, metavar="N",
                    help="parallel HLS segments (default 1)")
     p.add_argument("--embed-metadata", "--metadata", action="store_true",
@@ -290,8 +310,9 @@ def main() -> int:
                   browser_profile=args.browser_profile)
 
     do_download = (args.download or args.output or args.path or args.audio_only
-                   or args.embed_metadata or args.subs)
-    dl_ctx = make_context(timeout=args.timeout, proxies=proxies) if do_download else None
+                   or args.embed_metadata or args.subs or args.thumbnail
+                   or args.write_info)
+    dl_ctx = make_context(timeout=args.timeout, proxies=proxies) if (do_download or args.size) else None
     cb = _make_progress_printer()
     rc = 0
 
@@ -325,7 +346,7 @@ def main() -> int:
             continue
         if not do_download:
             for r in results:
-                _print_result(r)
+                _print_result(r, size=args.size, ctx=dl_ctx)
                 if len(results) > 1 or len(urls) > 1:
                     print("-" * 40)
             continue
@@ -346,7 +367,8 @@ def main() -> int:
                                  concurrency=args.concurrency, on_progress=cb,
                                  audio_only=args.audio_only,
                                  embed_metadata=args.embed_metadata,
-                                 subtitles=args.subs)
+                                 subtitles=args.subs, thumbnail=args.thumbnail,
+                                 write_info=args.write_info)
             except EmberError as e:
                 print()
                 _report_error(str(e), prefix="  error")

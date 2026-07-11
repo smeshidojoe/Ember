@@ -109,7 +109,9 @@ def _item_to_result(item: dict, url: str = "") -> Result:
         title=item.get("title"), author=str(owner_id) if owner_id else None,
         source_url=url or f"https://vk.com/video{owner_id}_{video_id}",
         filename_hint=safe_filename(f"vk_{owner_id}_{video_id}_{item.get('title') or ''}"),
-        thumbnail=images[-1].get("url") if images else None)
+        thumbnail=images[-1].get("url") if images else None,
+        duration=item.get("duration"), timestamp=item.get("date"),
+        view_count=item.get("views"), like_count=(item.get("likes") or {}).get("count"))
 
 
 def extract(ctx: Context, url: str) -> Result:
