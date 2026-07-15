@@ -12,9 +12,9 @@ import re
 import sys
 import time
 
-from . import (DownloadProgress, EmberError, available_qualities, download,
-               extract, extract_playlist, extract_timeline, probe_size,
-               supports_playlist)
+from . import (DownloadProgress, EmberError, available_qualities, can_extract,
+               download, extract, extract_playlist, extract_timeline, probe_size,
+               supports_playlist, supports_timeline)
 from .http import make_context
 
 # browsers understood by --cookies-from-browser (same set as yt-dlp)
@@ -336,10 +336,14 @@ def main() -> int:
     rc = 0
 
     for url in urls:
+        # профиль/канал -> лента; авто, если ссылка не пост
+        is_timeline = args.timeline or (supports_timeline(url) and not can_extract(url))
         try:
-            if args.timeline:
+            if is_timeline:
                 pl = extract_timeline(url, limit=args.limit, **common)
                 results = pl.entries
+                if do_download:
+                    results = list(reversed(results))     # старые -> новые
                 print(f"timeline: {pl.author or '-'} ({len(results)} items)")
             elif args.playlist or (do_download and supports_playlist(url)
                                    and "/sets/" in url):
@@ -351,6 +355,12 @@ def main() -> int:
         except EmberError as e:
             _report_error(str(e))
             rc = 1
+            continue
+
+        # лента без -d: компактный список, не вываливаем полные блоки
+        if is_timeline and not do_download and not args.json and not args.list_formats:
+            for i, r in enumerate(results, 1):
+                print(f"  {i:2d}. {(r.title or r.filename_hint or '')[:70]}  {r.source_url}")
             continue
 
         if args.json:
