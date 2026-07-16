@@ -119,14 +119,24 @@ def cookies_from_browser(
     else:
         domains = [d for lst in _DOMAIN_HINTS.values() for d in lst]
 
-    result = _via_native(browser, profile, domains)
-    backend = "native"
-    if result is None:
-        result = _via_ytdlp(browser, profile, domains)
-        backend = "yt-dlp"
-    if result is None:
-        result = _via_browser_cookie3(browser, domains)
-        backend = "browser_cookie3"
+    try:
+        result = _via_native(browser, profile, domains)
+        backend = "native"
+        if result is None:
+            result = _via_ytdlp(browser, profile, domains)
+            backend = "yt-dlp"
+        if result is None:
+            result = _via_browser_cookie3(browser, domains)
+            backend = "browser_cookie3"
+    except EmberError:
+        raise
+    except PermissionError as e:  # браузер открыт и держит cookie-базу
+        raise EmberError(
+            f"could not read cookies: {browser} is running and locks its cookie "
+            f"database. Close {browser} and retry, or use --cookies-file / "
+            "--cookies instead") from e
+    except Exception as e:  # прочее неожиданное — без сырого traceback
+        raise EmberError(f"could not read cookies from {browser}: {e}") from e
     if result is not None:
         log.info("cookies from %s via %s: %d cookies", browser, backend, len(result))
     if result is None:

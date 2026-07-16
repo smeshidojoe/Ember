@@ -356,6 +356,10 @@ def main() -> int:
             _report_error(str(e))
             rc = 1
             continue
+        except Exception as e:  # ничего не должно долетать сюда сырым
+            print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
+            rc = 1
+            continue
 
         # лента без -d: компактный список, не вываливаем полные блоки
         if is_timeline and not do_download and not args.json and not args.list_formats:

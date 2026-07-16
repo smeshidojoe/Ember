@@ -299,11 +299,22 @@ def _dpapi_decrypt(data: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 def _query(db_path: str, sql: str):
-    """Read the DB via a temp copy (works around a lock held by the browser)."""
+    """Read cookies even while the browser is open.
+
+    immutable=1 reads the file directly ignoring locks; if that fails
+    (WAL etc.) fall back to querying a temp copy."""
+    try:
+        con = sqlite3.connect(f"file:{db_path}?immutable=1", uri=True)
+        try:
+            return con.execute(sql).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        pass
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     tmp.close()
     try:
-        shutil.copyfile(db_path, tmp.name)
+        shutil.copyfile(db_path, tmp.name)          # may fail if OS locks it
         con = sqlite3.connect(f"file:{tmp.name}?immutable=1", uri=True)
         try:
             return con.execute(sql).fetchall()
