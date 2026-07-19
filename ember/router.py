@@ -7,7 +7,10 @@ from typing import List, Optional
 
 import requests
 
+import os
+
 from .cookies import cookies_from_browser as _cookies_from_browser
+from .cookies import cookies_from_file as _cookies_from_file
 from .errors import EmberError, UnsupportedUrlError
 from .http import make_context
 from .models import Playlist, Result
@@ -45,6 +48,14 @@ def _match_profile(url: str):
     return None
 
 
+def _match_playlist(url: str):
+    for service in _SERVICES:
+        for pattern in getattr(service, "PLAYLIST_PATTERNS", ()):
+            if pattern.match(url):
+                return service
+    return None
+
+
 def _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
                browser_profile, service_name):
     ctx = make_context(timeout=timeout, proxies=proxies, session=session)
@@ -53,6 +64,8 @@ def _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
             _cookies_from_browser(cookies_from_browser,
                                   service=service_name, profile=browser_profile))
     if cookies:
+        if isinstance(cookies, (str, os.PathLike)):     # путь к cookies.txt
+            cookies = _cookies_from_file(cookies)
         ctx.session.cookies.update(cookies)
     return ctx
 
@@ -102,22 +115,19 @@ def extract(
             f"Supported: {', '.join(supported_services())}")
 
     log.info("extract: %s -> service=%s", url, service.SERVICE)
-    ctx = make_context(timeout=timeout, proxies=proxies, session=session)
-    if cookies_from_browser:
-        log.debug("loading cookies from browser %s", cookies_from_browser)
-        ctx.session.cookies.update(
-            _cookies_from_browser(cookies_from_browser,
-                                  service=service.SERVICE,
-                                  profile=browser_profile))
-    if cookies:
-        ctx.session.cookies.update(cookies)
+    ctx = _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
+                     browser_profile, service.SERVICE)
     return service.extract(ctx, url)
 
 
 def supports_playlist(url: str) -> bool:
-    """True if playlist extraction is available for the URL."""
-    service = _match_service(url.strip())
-    return service is not None and hasattr(service, "extract_playlist")
+    """True only if the URL really is a playlist/set (not a single post).
+
+    A single track/video returns False — extract_playlist() still accepts it
+    and yields a one-entry Playlist, but this predicate stays honest so a
+    caller can decide whether to show a playlist UI.
+    """
+    return _match_playlist(url.strip()) is not None
 
 
 def extract_playlist(

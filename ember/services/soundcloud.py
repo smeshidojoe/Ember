@@ -26,6 +26,11 @@ PROFILE_PATTERNS = [
     re.compile(r"https?://(?:www\.|m\.)?soundcloud\.com/[\w-]+/?(?:\?.*)?$"),
 ]
 
+# только реальные наборы: одиночный трек плейлистом не считается
+PLAYLIST_PATTERNS = [
+    re.compile(r"https?://(?:www\.|m\.)?soundcloud\.com/[\w-]+/sets/[\w-]+/?(?:\?.*)?$"),
+]
+
 _CACHE_KEY = "soundcloud_client_id"
 _CACHE_TTL = 7 * 24 * 3600  # client_id живёт долго — кэшируем на неделю
 _SCRIPT_RE = re.compile(r'<script[^>]+src="(https://a-v2\.sndcdn\.com/[^"]+)"')

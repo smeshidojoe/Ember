@@ -14,8 +14,8 @@ import sys
 import time
 
 from . import (DownloadProgress, EmberError, available_qualities, can_extract,
-               download, extract, extract_playlist, extract_timeline, probe_size,
-               supports_playlist, supports_timeline)
+               cookies_from_file, download, extract, extract_playlist,
+               extract_timeline, probe_size, supports_playlist, supports_timeline)
 from .http import make_context
 
 # browsers understood by --cookies-from-browser (same set as yt-dlp)
@@ -43,17 +43,7 @@ def _parse_cookies_arg(raw: str) -> dict:
     return cookies
 
 
-def _parse_cookies_file(path: str) -> dict:
-    cookies = {}
-    with open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("\t")
-            if len(parts) >= 7:
-                cookies[parts[5]] = parts[6]
-    return cookies
+_parse_cookies_file = cookies_from_file       # библиотечный парсер Netscape
 
 
 def _bar(frac: float, width: int = 30) -> str:
@@ -100,7 +90,7 @@ def _line(text: str) -> None:
 
 def _make_progress_printer():
     """One-line progress: MiB / MiB [bar] pct speed ETA (CLI only)."""
-    state = {"last": 0.0, "start": time.time()}
+    state = {"last": 0.0}
     MiB = 1048576
 
     def cb(p: DownloadProgress):
@@ -111,26 +101,20 @@ def _make_progress_printer():
         if now - state["last"] < 0.1:
             return
         state["last"] = now
-        elapsed = now - state["start"] or 1e-9
-        speed = p.downloaded / elapsed / MiB
-        dl = p.downloaded / MiB
+        dl, spd = p.downloaded / MiB, p.speed / MiB
         if p.total:
             frac = p.fraction or 0
             # bar shrinks so the whole line fits the console
             bar = _bar(frac, max(10, _cols() - 56))
             _line(f"  {dl:.2f} MiB / {p.total / MiB:.2f} MiB [{bar}]"
-                  f" {frac * 100:6.2f}% {speed:.2f} MiB/s {_eta(eta_s(p, speed, MiB))}")
+                  f" {frac * 100:6.2f}% {spd:.2f} MiB/s {_eta(p.eta or 0)}")
         elif p.segments_total:
             _line(f"  segment {p.segments_done}/{p.segments_total}"
-                  f"  {dl:.2f} MiB  {speed:.2f} MiB/s")
+                  f"  {dl:.2f} MiB  {spd:.2f} MiB/s")
         else:
-            _line(f"  {dl:.2f} MiB  {speed:.2f} MiB/s")
+            _line(f"  {dl:.2f} MiB  {spd:.2f} MiB/s")
 
     return cb
-
-
-def eta_s(p: DownloadProgress, speed_mib: float, MiB: int) -> float:
-    return (p.total - p.downloaded) / (speed_mib * MiB) if speed_mib else 0
 
 
 def _print_result(result, size=False, ctx=None) -> None:
@@ -381,8 +365,7 @@ def main() -> int:
                 if do_download:
                     results = list(reversed(results))     # старые -> новые
                 print(f"timeline: {pl.author or '-'} ({len(results)} items)")
-            elif args.playlist or (do_download and supports_playlist(url)
-                                   and "/sets/" in url):
+            elif args.playlist or supports_playlist(url):
                 playlist = extract_playlist(url, **common)
                 results = playlist.entries
                 print(f"playlist: {playlist.title or '-'} ({len(results)} items)")

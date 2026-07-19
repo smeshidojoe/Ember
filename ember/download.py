@@ -18,8 +18,9 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -42,6 +43,7 @@ class DownloadProgress:
     segments_total: Optional[int] = None     # total HLS segments
     stage: str = "download"                  # "download" | "mux" | "metadata"
     path: Optional[str] = None
+    started: float = field(default_factory=time.monotonic)
 
     @property
     def fraction(self) -> Optional[float]:
@@ -50,6 +52,23 @@ class DownloadProgress:
         if self.segments_total:
             return min(1.0, self.segments_done / self.segments_total)
         return None
+
+    @property
+    def elapsed(self) -> float:
+        """Seconds since this download started."""
+        return max(time.monotonic() - self.started, 1e-9)
+
+    @property
+    def speed(self) -> float:
+        """Average bytes/sec since the start."""
+        return self.downloaded / self.elapsed
+
+    @property
+    def eta(self) -> Optional[float]:
+        """Seconds left, or None when the total size is unknown."""
+        if not self.total or not self.speed:
+            return None
+        return max(self.total - self.downloaded, 0) / self.speed
 
 
 ProgressCb = Callable[[DownloadProgress], None]

@@ -33,11 +33,14 @@ Twitter/X may need cookies or a non-blocked IP.
 ### `can_extract(url) -> bool`
 True if the URL matches a supported service (else hand it to yt-dlp).
 
-### `supports_playlist(url) -> bool` / `supports_timeline(url) -> bool`
-Whether playlist / author-timeline extraction is available for the URL.
-
 ### `supports_playlist(url) -> bool`
-True if playlist extraction is available for the URL.
+True **only if the URL really is a playlist/set** — a single track/video gives
+`False`. (`extract_playlist()` still accepts a single link and returns a
+one-entry `Playlist`; this predicate stays strict so you can decide whether to
+show playlist UI.)
+
+### `supports_timeline(url) -> bool`
+True if the URL is a profile/channel with author-timeline support.
 
 ### `supported_services() -> list[str]`
 List of service names.
@@ -72,11 +75,23 @@ Whether `ffmpeg` is on PATH.
 
 ## Cookies
 
-### `cookies_from_browser(browser, service=None, profile=None) -> dict`
+### `cookies_from_browser(browser, service=None, profile=None, domains=None) -> dict`
 Read cookies from a browser. Native reader (Firefox any OS, Chromium on Win/mac/Linux),
 falling back to yt-dlp / browser_cookie3.
-- **service** `str | None` — limit to that service's domains.
-- **raises** `EmberError` (unsupported combo with no backend, or App-Bound Encryption).
+- **service** `str | None` — limit to that service's domains. An unknown name
+  raises `EmberError` (it does not silently return `{}`).
+- **domains** `list[str] | None` — explicit domain substrings, e.g.
+  `["youtube.com"]`. Works for sites Ember doesn't support; overrides `service`.
+- **raises** `EmberError` — unknown service; browser running and locking its
+  cookie DB; unsupported combo with no backend; App-Bound Encryption.
+
+### `cookies_from_file(path) -> dict`
+Parse a Netscape-format `cookies.txt` (yt-dlp / browser-extension export).
+`extract()` also accepts the path directly:
+
+```python
+ember.extract(url, cookies="cookies.txt")     # dict or path both work
+```
 
 ## Data models
 
@@ -115,21 +130,20 @@ falling back to yt-dlp / browser_cookie3.
 - `downloaded: int`, `total: int | None`.
 - `segments_done: int`, `segments_total: int | None`.
 - `stage: str` — `"download"` | `"mux"` | `"metadata"`.
-- `fraction: float | None` (property) — 0..1 or None if unknown.
+- `started: float` — `time.monotonic()` when this download began.
+- `fraction: float | None` (property) — 0..1, or None if size unknown.
+- `elapsed: float` (property) — seconds since start.
+- `speed: float` (property) — average bytes/sec.
+- `eta: float | None` (property) — seconds left, None if size unknown.
 
-Speed and ETA are not fields — compute them with your own timer (the CLI does
-the same):
+No timer of your own needed:
 
 ```python
-import time
-start = time.time()
-
 def on_progress(p: ember.DownloadProgress):
-    if not p.total:                      # HLS / unknown size: no % or ETA
+    if p.fraction is None:                       # HLS / unknown size
+        print(f"{p.downloaded/1048576:.1f} MiB  {p.speed/1048576:.2f} MiB/s")
         return
-    speed = p.downloaded / (time.time() - start)        # bytes/sec
-    eta = (p.total - p.downloaded) / speed if speed else 0
-    print(f"{p.fraction*100:5.1f}%  {speed/1048576:.2f} MiB/s  ETA {int(eta)}s")
+    print(f"{p.fraction*100:5.1f}%  {p.speed/1048576:.2f} MiB/s  ETA {int(p.eta)}s")
 
 ember.download(result, "downloads/", on_progress=on_progress)
 ```

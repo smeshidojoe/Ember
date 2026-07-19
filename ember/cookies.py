@@ -92,30 +92,58 @@ def _via_browser_cookie3(browser: str, domains) -> Optional[dict]:
     return out
 
 
+def cookies_from_file(path) -> dict:
+    """Read a Netscape-format cookies.txt (yt-dlp / browser-extension export).
+
+    Returns dict {cookie_name: value}. Also accepted directly as
+    extract(url, cookies="cookies.txt").
+    """
+    out = {}
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 7:
+                out[parts[5]] = parts[6]
+    return out
+
+
 def cookies_from_browser(
     browser: str,
     service: Optional[str] = None,
     profile: Optional[str] = None,
+    domains: Optional[list] = None,
 ) -> dict:
     """Read cookies from the given browser.
 
     Args:
         browser: "firefox", "vivaldi", "chrome", "edge", "brave", "opera", ...
         service: an Ember service name — only its domains are read.
-                 If None, domains of all services are read.
         profile: browser profile name.
+        domains: explicit domain substrings to read, e.g. ["youtube.com"].
+                 Use this for sites Ember does not support. Overrides `service`.
+                 With neither `service` nor `domains`, all known service
+                 domains are read.
 
     Returns:
         dict {cookie_name: value}.
 
     Raises:
-        EmberError: the combination is uncovered by the built-in reader and no
-                    fallback backend (yt-dlp / browser_cookie3) is installed;
-                    or the browser is under App-Bound Encryption.
+        EmberError: unknown `service`; the browser+OS combo is uncovered and no
+                    fallback backend is installed; or App-Bound Encryption.
     """
     browser = browser.lower().strip()
-    if service:
-        domains = _DOMAIN_HINTS.get(service, [])
+    if domains:
+        pass
+    elif service:
+        if service not in _DOMAIN_HINTS:
+            raise EmberError(
+                f"unknown service '{service}' — no domains known for it. "
+                f"Known: {', '.join(sorted(_DOMAIN_HINTS))}. "
+                "For other sites pass domains=['example.com']")
+        domains = _DOMAIN_HINTS[service]
     else:
         domains = [d for lst in _DOMAIN_HINTS.values() for d in lst]
 
