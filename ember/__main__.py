@@ -9,6 +9,7 @@ Installed entry point is `ember`; `python -m ember` works too.
 
 import argparse
 import re
+import shutil
 import sys
 import time
 
@@ -67,6 +68,36 @@ def _eta(seconds: float) -> str:
     return f"{s // 60:02d}m{s % 60:02d}s"
 
 
+def _enable_vt() -> None:
+    """Windows: turn on VT processing so \\r and \\x1b[K redraw in place."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.GetStdHandle(-11)                      # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if k.GetConsoleMode(h, ctypes.byref(mode)):
+            k.SetConsoleMode(h, mode.value | 0x0004)  # VIRTUAL_TERMINAL_PROCESSING
+    except Exception:
+        pass
+
+
+def _cols() -> int:
+    return shutil.get_terminal_size((80, 20)).columns
+
+
+def _line(text: str) -> None:
+    """Redraw one line in place. Skipped when stdout is not a terminal —
+    there \\r would pile up as new lines."""
+    try:
+        if not sys.stdout.isatty():
+            return
+    except Exception:
+        return
+    print("\r\x1b[K" + text[:_cols() - 1], end="", flush=True)
+
+
 def _make_progress_printer():
     """One-line progress: MiB / MiB [bar] pct speed ETA (CLI only)."""
     state = {"last": 0.0, "start": time.time()}
@@ -75,7 +106,7 @@ def _make_progress_printer():
     def cb(p: DownloadProgress):
         now = time.time()
         if p.stage != "download":
-            print(f"\r  {p.stage}…", end="", flush=True)
+            _line(f"  {p.stage}…")
             return
         if now - state["last"] < 0.1:
             return
@@ -85,17 +116,21 @@ def _make_progress_printer():
         dl = p.downloaded / MiB
         if p.total:
             frac = p.fraction or 0
-            eta = (p.total - p.downloaded) / (speed * MiB) if speed else 0
-            print(f"\r  {dl:.2f} MiB / {p.total / MiB:.2f} MiB [{_bar(frac)}]"
-                  f" {frac * 100:6.2f}% {speed:.2f} MiB/s {_eta(eta)}   ",
-                  end="", flush=True)
+            # bar shrinks so the whole line fits the console
+            bar = _bar(frac, max(10, _cols() - 56))
+            _line(f"  {dl:.2f} MiB / {p.total / MiB:.2f} MiB [{bar}]"
+                  f" {frac * 100:6.2f}% {speed:.2f} MiB/s {_eta(eta_s(p, speed, MiB))}")
         elif p.segments_total:
-            print(f"\r  segment {p.segments_done}/{p.segments_total}"
-                  f"  {dl:.2f} MiB  {speed:.2f} MiB/s   ", end="", flush=True)
+            _line(f"  segment {p.segments_done}/{p.segments_total}"
+                  f"  {dl:.2f} MiB  {speed:.2f} MiB/s")
         else:
-            print(f"\r  {dl:.2f} MiB  {speed:.2f} MiB/s   ", end="", flush=True)
+            _line(f"  {dl:.2f} MiB  {speed:.2f} MiB/s")
 
     return cb
+
+
+def eta_s(p: DownloadProgress, speed_mib: float, MiB: int) -> float:
+    return (p.total - p.downloaded) / (speed_mib * MiB) if speed_mib else 0
 
 
 def _print_result(result, size=False, ctx=None) -> None:
@@ -297,6 +332,7 @@ def main() -> int:
             _s.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
+    _enable_vt()
     args = _build_parser().parse_args()
     _setup_logging(args.verbose)
 
@@ -407,11 +443,19 @@ def main() -> int:
                 _report_error(str(e), prefix="  error")
                 rc = 1
                 continue
-            print("\r" + " " * 90, end="")
+            _line("")                       # стираем строку прогресса
             for p in paths:
                 print(f"\r  saved: {p}")
     return rc
 
 
+def _run() -> int:
+    try:
+        return main()
+    except KeyboardInterrupt:
+        print("\ncancelled", file=sys.stderr)
+        return 130                          # общепринятый код для SIGINT
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_run())

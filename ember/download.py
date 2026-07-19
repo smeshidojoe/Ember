@@ -98,14 +98,23 @@ def _stream_to_file(ctx: Context, media: Media, out: Path,
         total = int(clen) + existing
     prog = DownloadProgress(downloaded=existing, total=total, path=str(out))
 
-    with open(part, mode) as f:
-        for chunk in r.iter_content(65536):
-            if not chunk:
-                continue
-            f.write(chunk)
-            prog.downloaded += len(chunk)
-            if on_progress:
-                on_progress(prog)
+    try:
+        with open(part, mode) as f:
+            for chunk in r.iter_content(65536):
+                if not chunk:
+                    continue
+                f.write(chunk)
+                prog.downloaded += len(chunk)
+                if on_progress:
+                    on_progress(prog)
+    except KeyboardInterrupt:
+        # отмена: не оставляем недокачанный .part
+        # (при сетевом сбое .part СОХРАНЯЕМ — по нему работает докачка)
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+        raise
     os.replace(part, out)
 
 

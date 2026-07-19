@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ember-extract"
-version = "0.3.9"
+version = "0.4.0"
 description = "Extract and download media from 15 social services (an embeddable cobalt-like library)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -24,7 +24,7 @@ browser = ["yt-dlp"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-ember = "ember.__main__:main"
+ember = "ember.__main__:_run"
 
 [tool.setuptools.packages.find]
 include = ["ember*"]
