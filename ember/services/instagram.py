@@ -25,8 +25,15 @@ SERVICE = "instagram"
 
 PATTERNS = [
     re.compile(r"https?://(?:www\.)?instagram\.com/(?:[^/]+/)?(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)"),
+    re.compile(r"https?://(?:www\.)?instagram\.com/stories/[^/?]+(?:/\d+)?"),
     re.compile(r"https?://(?:www\.)?instagram\.com/share/((?:p|reel|reels)/)?[A-Za-z0-9_-]+"),
 ]
+
+# /stories/highlights/{id} — коллекция; /stories/{user}/{id} — один элемент;
+# /stories/{user} — весь текущий трей историй юзера
+_HIGHLIGHT_RE = re.compile(r"instagram\.com/stories/highlights/(\d+)")
+_STORY_RE = re.compile(r"instagram\.com/stories/(?!highlights(?:/|$))[^/?]+/(\d+)")
+_USER_STORY_RE = re.compile(r"instagram\.com/stories/(?!highlights(?:/|$))([^/?]+)/?(?:\?|$)")
 
 PROFILE_PATTERNS = [
     re.compile(r"https?://(?:www\.)?instagram\.com/(?!p/|reel/|reels/|tv/|share/|explore/)"
@@ -122,32 +129,13 @@ def _node_from_mobile(m: dict) -> Optional[dict]:
     return {"display_url": cand[0]["url"]} if cand else None
 
 
-def _from_mobile_info(ctx: Context, shortcode: str) -> Optional[dict]:
-    """Mobile media/info — carries carousel_media (full carousel). Needs a
-    non-blocked IP or cookies; returns a GraphQL-shaped dict for extract()."""
-    headers = {"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID}
-    r = ctx.get("https://i.instagram.com/api/v1/oembed/",
-                params={"url": f"https://www.instagram.com/p/{shortcode}/"},
-                headers=headers)
-    media_id = r.json().get("media_id") if r.status_code == 200 else None
-    if not media_id:
-        return None
-    info = ctx.get(f"https://i.instagram.com/api/v1/media/{media_id}/info/",
-                   headers=headers)
-    if info.status_code != 200:
-        return None
-    try:
-        item = info.json()["items"][0]
-    except (ValueError, LookupError):
-        return None
+def _shape_item(item: dict) -> Optional[dict]:
+    """Mobile media/info item -> GraphQL-shaped dict for _node_to_result()."""
     owner = {"username": (item.get("user") or {}).get("username")}
     caption = {"edges": [{"node": {"text": (item.get("caption") or {}).get("text", "")}}]}
     if item.get("carousel_media"):
-        edges = []
-        for m in item["carousel_media"]:
-            node = _node_from_mobile(m)
-            if node:
-                edges.append({"node": node})
+        edges = [{"node": n} for m in item["carousel_media"]
+                 if (n := _node_from_mobile(m))]
         if not edges:
             return None
         return {"owner": owner, "edge_media_to_caption": caption,
@@ -157,6 +145,69 @@ def _from_mobile_info(ctx: Context, shortcode: str) -> Optional[dict]:
         return None
     node.update({"owner": owner, "edge_media_to_caption": caption})
     return node
+
+
+def _media_info(ctx: Context, media_id: str) -> Optional[dict]:
+    r = ctx.get(f"https://i.instagram.com/api/v1/media/{media_id}/info/",
+                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
+    if r.status_code != 200:
+        return None
+    try:
+        return _shape_item(r.json()["items"][0])
+    except (ValueError, LookupError):
+        return None
+
+
+def _reels_media(ctx: Context, reel_id: str) -> list:
+    """feed/reels_media -> list of story items for a reel (highlight or user tray)."""
+    r = ctx.get("https://i.instagram.com/api/v1/feed/reels_media/",
+                params={"reel_ids": reel_id},
+                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
+    if r.status_code != 200:
+        return []
+    try:
+        reels = r.json().get("reels") or {}
+    except ValueError:
+        return []
+    reel = reels.get(reel_id) or {}
+    return reel.get("items") or []
+
+
+def _items_gallery(items: list) -> Optional[dict]:
+    """Story items (highlight/tray) -> one GraphQL-shaped gallery dict."""
+    edges = [{"node": n} for it in items if (n := _node_from_mobile(it))]
+    if not edges:
+        return None
+    owner = {}
+    for it in items:
+        if it.get("user"):
+            owner = {"username": it["user"].get("username")}
+            break
+    return {"owner": owner,
+            "edge_media_to_caption": {"edges": [{"node": {"text": ""}}]},
+            "edge_sidecar_to_children": {"edges": edges}}
+
+
+def _user_id(ctx: Context, username: str) -> Optional[str]:
+    r = ctx.get("https://i.instagram.com/api/v1/users/web_profile_info/",
+                params={"username": username},
+                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
+    if r.status_code != 200:
+        return None
+    try:
+        return r.json()["data"]["user"]["id"]
+    except (ValueError, LookupError):
+        return None
+
+
+def _from_mobile_info(ctx: Context, shortcode: str) -> Optional[dict]:
+    """Mobile media/info — carries carousel_media (full carousel). Needs a
+    non-blocked IP or cookies; returns a GraphQL-shaped dict for extract()."""
+    r = ctx.get("https://i.instagram.com/api/v1/oembed/",
+                params={"url": f"https://www.instagram.com/p/{shortcode}/"},
+                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
+    media_id = r.json().get("media_id") if r.status_code == 200 else None
+    return _media_info(ctx, media_id) if media_id else None
 
 
 def _from_oembed(ctx: Context, shortcode: str) -> Optional[dict]:
@@ -222,7 +273,33 @@ def _node_to_result(data: dict, url: str, shortcode: str = "") -> Optional[Resul
                   like_count=likes)
 
 
+_STORY_HELP = ("Stories require logged-in account cookies "
+               "(and they expire after 24h).")
+
+
+def _story_result(ctx: Context, url: str, data: Optional[dict], what: str) -> Result:
+    if not data:
+        raise ExtractionError(
+            f"Instagram did not return the {what}. {_STORY_HELP}", SERVICE)
+    res = _node_to_result(data, url)
+    if res is None:
+        raise ExtractionError(f"no video or photo found in the {what}", SERVICE)
+    return res
+
+
 def extract(ctx: Context, url: str) -> Result:
+    hl = _HIGHLIGHT_RE.search(url)
+    if hl:
+        items = _reels_media(ctx, f"highlight:{hl.group(1)}")
+        return _story_result(ctx, url, _items_gallery(items), "highlight")
+    story = _STORY_RE.search(url)
+    if story:
+        return _story_result(ctx, url, _media_info(ctx, story.group(1)), "story")
+    tray = _USER_STORY_RE.search(url)
+    if tray:
+        uid = _user_id(ctx, tray.group(1))
+        items = _reels_media(ctx, uid) if uid else []
+        return _story_result(ctx, url, _items_gallery(items), "user's stories")
     shortcode = _resolve_shortcode(ctx, url)
     data = (_from_graphql(ctx, shortcode)
             or _from_mobile_info(ctx, shortcode)

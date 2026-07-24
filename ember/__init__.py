@@ -31,7 +31,7 @@ from .models import Media, MediaVariant, Playlist, Result, Subtitle
 from .router import (can_extract, extract, extract_playlist, extract_timeline,
                      supported_services, supports_playlist, supports_timeline)
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "extract",
