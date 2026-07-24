@@ -259,11 +259,14 @@ def _pick_progressive_url(media: Media, max_height: Optional[int]) -> str:
 
 def available_qualities(media: Media, ctx: Optional[Context] = None) -> List[int]:
     """List of available heights (e.g. [1080, 720, 480]) for quality choice."""
-    if media.ext != "m3u8":
+    if media.variants:                       # progressive or per-quality m3u8
         heights = {v.height for v in media.variants if v.height}
         if media.quality and media.quality.rstrip("p").isdigit():
             heights.add(int(media.quality.rstrip("p")))
         return sorted(heights, reverse=True)
+    if media.ext != "m3u8":
+        return [int(media.quality.rstrip("p"))] if (
+            media.quality and media.quality.rstrip("p").isdigit()) else []
     ctx = ctx or make_context()
     text = ctx.get(media.url, headers=media.http_headers or None).text
     if hls.looks_like_media_playlist(text):
@@ -292,7 +295,13 @@ def download_media(media: Media, out_path: str, *,
         _stream_to_file(ctx, chosen, out, on_progress, resume)
         result_path = out
     else:
-        result_path = _download_hls(ctx, media, out, max_height=max_height,
+        # per-quality m3u8 (no master, e.g. Pornhub): pick by max_height here
+        m = media
+        if media.variants and max_height:
+            url = _pick_progressive_url(media, max_height)
+            m = Media(kind=media.kind, url=url, ext="m3u8",
+                      http_headers=media.http_headers)
+        result_path = _download_hls(ctx, m, out, max_height=max_height,
                                     concurrency=concurrency, on_progress=on_progress,
                                     meta=meta)
 

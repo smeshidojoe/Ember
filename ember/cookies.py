@@ -37,6 +37,7 @@ _DOMAIN_HINTS = {
     "vk": ["vk.com", "vkvideo.ru", "vk.ru"],
     "facebook": ["facebook.com"],
     "twitch": ["twitch.tv"],
+    "pornhub": ["pornhub.com"],
 }
 
 

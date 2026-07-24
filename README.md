@@ -11,7 +11,7 @@ The only required dependency is `requests`. Python 3.9+.
 
 ## Supported services
 
-**15 services:**
+**16 services:**
 
 | Service | Extracts | Notes |
 |---|---|---|
@@ -30,6 +30,7 @@ The only required dependency is `requests`. Python 3.9+.
 | VK / VK Video | videos, clips | |
 | Facebook | videos, Reels | usually needs cookies |
 | Twitch | clips only | not VODs/streams |
+| Pornhub | videos | age wall bypassed automatically |
 
 > Reddit, Newgrounds and OK.ru block anonymous requests from datacenter/VPN addresses
 > (they work on a normal home IP); Instagram and Facebook may require cookies for full

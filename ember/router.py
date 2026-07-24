@@ -15,15 +15,15 @@ from .errors import EmberError, UnsupportedUrlError
 from .http import make_context
 from .models import Playlist, Result
 from .services import (bluesky, facebook, instagram, newgrounds, ok, pinterest,
-                       reddit, rutube, soundcloud, tiktok, tumblr, twitch,
-                       twitter, vimeo, vk)
+                       pornhub, reddit, rutube, soundcloud, tiktok, tumblr,
+                       twitch, twitter, vimeo, vk)
 
 log = logging.getLogger(__name__)
 
 _SERVICES = [
     tiktok, twitter, instagram, reddit,
     vimeo, soundcloud, pinterest, tumblr, bluesky, newgrounds,
-    rutube, ok, vk, facebook, twitch,
+    rutube, ok, vk, facebook, twitch, pornhub,
 ]
 
 
