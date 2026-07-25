@@ -40,6 +40,13 @@ PROFILE_PATTERNS = [
                r"([A-Za-z0-9_.]+)/?$"),
 ]
 
+# highlights берутся по той же ссылке на профиль (см. extract_highlights)
+HIGHLIGHTS_PATTERNS = PROFILE_PATTERNS
+
+_PROFILE_ID_RE = re.compile(r'"profilePage_(\d+)"')
+_PROFILE_ID_ALT_RE = re.compile(r'"user_id":"(\d+)"')
+_HL_QUERY_HASH = "d4d88dc1500312af6f937f7b804c68c3"
+
 _IG_APP_ID = "936619743392459"
 _GRAPHQL_DOC_ID = "8845758582119845"  # PolarisPostActionLoadPostQueryQuery
 _MOBILE_UA = (
@@ -173,16 +180,20 @@ def _reels_media(ctx: Context, reel_id: str) -> list:
     return reel.get("items") or []
 
 
-def _items_gallery(items: list) -> Optional[dict]:
+def _items_gallery(items: list, username: Optional[str] = None) -> Optional[dict]:
     """Story items (highlight/tray) -> one GraphQL-shaped gallery dict."""
     edges = [{"node": n} for it in items if (n := _node_from_mobile(it))]
     if not edges:
         return None
+    # имя автора: из элементов, иначе — из ссылки (в трее его часто нет)
     owner = {}
     for it in items:
-        if it.get("user"):
-            owner = {"username": it["user"].get("username")}
+        name = (it.get("user") or {}).get("username")
+        if name:
+            owner = {"username": name}
             break
+    if not owner.get("username") and username:
+        owner = {"username": username}
     return {"owner": owner,
             "edge_media_to_caption": {"edges": [{"node": {"text": ""}}]},
             "edge_sidecar_to_children": {"edges": edges}}
@@ -192,12 +203,42 @@ def _user_id(ctx: Context, username: str) -> Optional[str]:
     r = ctx.get("https://i.instagram.com/api/v1/users/web_profile_info/",
                 params={"username": username},
                 headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
+    if r.status_code == 200:
+        try:
+            return r.json()["data"]["user"]["id"]
+        except (ValueError, LookupError):
+            pass
+    # web_profile_info is rate-limited hard (429 on many networks); the
+    # profile page itself still carries the id
+    r = ctx.get(f"https://www.instagram.com/{username}/",
+                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
     if r.status_code != 200:
         return None
+    m = _PROFILE_ID_RE.search(r.text) or _PROFILE_ID_ALT_RE.search(r.text)
+    return m.group(1) if m else None
+
+
+def _highlight_reels(ctx: Context, user_id: str) -> list:
+    """List a profile's highlight collections -> [{id, title}, ...]."""
+    r = ctx.get("https://www.instagram.com/graphql/query/",
+                headers={"x-ig-app-id": _IG_APP_ID,
+                         "Referer": "https://www.instagram.com/"},
+                params={"query_hash": _HL_QUERY_HASH,
+                        "variables": json.dumps({
+                            "user_id": user_id,
+                            "include_chaining": False,
+                            "include_reel": True,
+                            "include_suggested_users": False,
+                            "include_logged_out_extras": False,
+                            "include_highlight_reels": True,
+                            "include_live_status": False})})
+    if r.status_code != 200:
+        return []
     try:
-        return r.json()["data"]["user"]["id"]
+        edges = r.json()["data"]["user"]["edge_highlight_reels"]["edges"]
     except (ValueError, LookupError):
-        return None
+        return []
+    return [e["node"] for e in edges if (e.get("node") or {}).get("id")]
 
 
 def _from_mobile_info(ctx: Context, shortcode: str) -> Optional[dict]:
@@ -297,9 +338,11 @@ def extract(ctx: Context, url: str) -> Result:
         return _story_result(ctx, url, _media_info(ctx, story.group(1)), "story")
     tray = _USER_STORY_RE.search(url)
     if tray:
-        uid = _user_id(ctx, tray.group(1))
+        username = tray.group(1)
+        uid = _user_id(ctx, username)
         items = _reels_media(ctx, uid) if uid else []
-        return _story_result(ctx, url, _items_gallery(items), "user's stories")
+        return _story_result(ctx, url, _items_gallery(items, username),
+                             "user's stories")
     shortcode = _resolve_shortcode(ctx, url)
     data = (_from_graphql(ctx, shortcode)
             or _from_mobile_info(ctx, shortcode)
@@ -313,6 +356,50 @@ def extract(ctx: Context, url: str) -> Result:
     if res is None:
         raise ExtractionError("no video or photo found in the post", SERVICE)
     return res
+
+
+def extract_highlights(ctx: Context, url: str, limit: int = 30):
+    """Instagram profile -> Playlist of its highlight collections.
+
+    One entry per highlight (the round covers pinned above the posts); each
+    entry is a gallery of that collection's stories. Needs account cookies."""
+    from ..http import gather
+    from ..models import Playlist
+    m = HIGHLIGHTS_PATTERNS[0].match(url)
+    if not m:
+        raise ExtractionError("not an Instagram profile URL", SERVICE)
+    username = m.group(1)
+
+    user_id = _user_id(ctx, username)
+    if not user_id:
+        raise ExtractionError(
+            f"could not resolve the Instagram user id for '{username}' — "
+            "needs account cookies or a different IP (proxy)", SERVICE)
+    nodes = _highlight_reels(ctx, user_id)
+    if not nodes:
+        raise ExtractionError(
+            f"no highlights for '{username}' (or Instagram hid them). "
+            + _STORY_HELP, SERVICE)
+
+    def one(node):
+        data = _items_gallery(_reels_media(ctx, f"highlight:{node['id']}"), username)
+        if not data:
+            return None
+        res = _node_to_result(data, url)
+        if res is None:
+            return None
+        title = (node.get("title") or "").strip() or None
+        res.title = title
+        res.filename_hint = safe_filename(
+            f"instagram_{username}_highlight_{title or node['id']}")
+        return res
+
+    entries = gather(one, nodes[:limit])
+    if not entries:
+        raise ExtractionError(
+            f"highlights of '{username}' returned no media. " + _STORY_HELP, SERVICE)
+    return Playlist(service=SERVICE, entries=entries, author=username,
+                    title=f"{username} highlights", source_url=url)
 
 
 def extract_timeline(ctx: Context, url: str, limit: int = 30):

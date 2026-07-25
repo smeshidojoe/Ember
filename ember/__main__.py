@@ -13,9 +13,11 @@ import shutil
 import sys
 import time
 
-from . import (DownloadProgress, EmberError, available_qualities, can_extract,
-               cookies_from_file, download, extract, extract_playlist,
-               extract_timeline, probe_size, supports_playlist, supports_timeline)
+from . import (DownloadProgress, EmberError, __version__, available_qualities,
+               can_extract, cookies_from_file, download, extract,
+               extract_highlights, extract_playlist, extract_timeline,
+               probe_size, supported_services, supports_playlist,
+               supports_timeline)
 from .http import make_context
 
 # browsers understood by --cookies-from-browser (same set as yt-dlp)
@@ -44,6 +46,20 @@ def _parse_cookies_arg(raw: str) -> dict:
 
 
 _parse_cookies_file = cookies_from_file       # библиотечный парсер Netscape
+
+
+_RATE_UNITS = {"": 1, "k": 1000, "m": 1000 ** 2, "g": 1000 ** 3,
+               "ki": 1024, "mi": 1024 ** 2, "gi": 1024 ** 3}
+
+
+def _parse_rate(raw: str) -> float:
+    """'500K' / '2M' / '1.5MiB' / '800' -> bytes per second."""
+    m = re.fullmatch(r"\s*([\d.]+)\s*([KMGkmg]i?)?B?/?[sS]?\s*", raw)
+    if not m:
+        raise ValueError(f"could not parse rate {raw!r}")
+    value = float(m.group(1))
+    unit = (m.group(2) or "").lower()
+    return value * _RATE_UNITS[unit]
 
 
 def _bar(frac: float, width: int = 30) -> str:
@@ -193,6 +209,9 @@ class _Parser(argparse.ArgumentParser):
 def _build_parser() -> argparse.ArgumentParser:
     p = _Parser(prog="ember",
                 description="Extract and download media (a cobalt-like library)")
+    p.add_argument("--version", action="version", version=f"ember {__version__}")
+    p.add_argument("--list-services", action="store_true",
+                   help="print supported services and exit")
     p.add_argument("url", nargs="?", help="link to a post / track / video")
     p.add_argument("-a", "--batch-file", metavar="FILE",
                    help="read links from a file (one per line, '#' comments; '-' = stdin)")
@@ -224,7 +243,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--size", action="store_true",
                    help="print file size before downloading (extra request)")
     p.add_argument("--concurrency", type=int, default=1, metavar="N",
-                   help="parallel HLS segments (default 1)")
+                   help="parallel HLS segments, and parallel gallery items (default 1)")
+    p.add_argument("--skip-existing", action="store_true", dest="skip_existing",
+                   help="do not re-download files that already exist")
+    p.add_argument("--rate-limit", metavar="RATE", dest="rate_limit",
+                   help="cap download speed, e.g. 500K, 2M, 1.5MiB (default: unlimited)")
     p.add_argument("--embed-metadata", "--metadata", action="store_true",
                    dest="embed_metadata",
                    help="write title/author into the file (needs ffmpeg); implies --download")
@@ -232,6 +255,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="treat as a playlist/set (SoundCloud sets)")
     p.add_argument("--timeline", action="store_true",
                    help="treat the URL as a profile/channel and list latest posts")
+    p.add_argument("--highlights", action="store_true",
+                   help="treat the URL as a profile and list its story highlights "
+                        "(Instagram; needs cookies)")
     p.add_argument("--limit", type=int, default=30, metavar="N",
                    help="max items for --timeline (default 30)")
     p.add_argument("--proxy", metavar="URL",
@@ -320,6 +346,10 @@ def main() -> int:
     args = _build_parser().parse_args()
     _setup_logging(args.verbose)
 
+    if args.list_services:
+        print(", ".join(supported_services()))
+        return 0
+
     urls = []
     if args.url:
         urls.append(args.url)
@@ -343,6 +373,14 @@ def main() -> int:
     if args.cookies:
         cookies.update(_parse_cookies_arg(args.cookies))
 
+    rate_limit = None
+    if args.rate_limit:
+        try:
+            rate_limit = _parse_rate(args.rate_limit)
+        except ValueError as e:
+            print(f"error: {e} (use e.g. 500K, 2M, 1.5MiB)", file=sys.stderr)
+            return 2
+
     proxies = {"http": args.proxy, "https": args.proxy} if args.proxy else None
     common = dict(timeout=args.timeout, proxies=proxies, cookies=cookies or None,
                   cookies_from_browser=args.cookies_from_browser,
@@ -350,16 +388,22 @@ def main() -> int:
 
     do_download = (args.download or args.output or args.path or args.audio_only
                    or args.embed_metadata or args.subs or args.thumbnail
-                   or args.write_info)
+                   or args.write_info or args.skip_existing or args.rate_limit)
     dl_ctx = make_context(timeout=args.timeout, proxies=proxies) if (do_download or args.size) else None
     cb = _make_progress_printer()
     rc = 0
 
     for url in urls:
         # профиль/канал -> лента; авто, если ссылка не пост
-        is_timeline = args.timeline or (supports_timeline(url) and not can_extract(url))
+        is_timeline = (not args.highlights
+                       and (args.timeline
+                            or (supports_timeline(url) and not can_extract(url))))
         try:
-            if is_timeline:
+            if args.highlights:
+                pl = extract_highlights(url, limit=args.limit, **common)
+                results = pl.entries
+                print(f"highlights: {pl.author or '-'} ({len(results)} collections)")
+            elif is_timeline:
                 pl = extract_timeline(url, limit=args.limit, **common)
                 results = pl.entries
                 if do_download:
@@ -380,10 +424,13 @@ def main() -> int:
             rc = 1
             continue
 
-        # лента без -d: компактный список, не вываливаем полные блоки
-        if is_timeline and not do_download and not args.json and not args.list_formats:
+        # лента/highlights без -d: компактный список, не вываливаем полные блоки
+        if ((is_timeline or args.highlights) and not do_download
+                and not args.json and not args.list_formats):
             for i, r in enumerate(results, 1):
-                print(f"  {i:2d}. {(r.title or r.filename_hint or '')[:70]}  {r.source_url}")
+                extra = (f"  [{len(r.media)} items]" if args.highlights
+                         else f"  {r.source_url}")
+                print(f"  {i:2d}. {(r.title or r.filename_hint or '')[:60]}{extra}")
             continue
 
         if args.json:
@@ -405,6 +452,10 @@ def main() -> int:
 
         out_dir = args.path or "."
         single = len(results) == 1 and len(urls) == 1
+        if args.output and "%(" not in args.output and not single:
+            print(f'warning: -o "{args.output}" is a literal name but there are '
+                  "multiple files — ignored, using site-derived names instead. "
+                  "Use a template, e.g. -o \"%(title)s\"", file=sys.stderr)
         for r in results:
             print(f"downloading: {r.title or r.filename_hint}")
             if args.output and "%(" in args.output:
@@ -420,7 +471,9 @@ def main() -> int:
                                  audio_only=args.audio_only,
                                  embed_metadata=args.embed_metadata,
                                  subtitles=args.subs, thumbnail=args.thumbnail,
-                                 write_info=args.write_info)
+                                 write_info=args.write_info,
+                                 skip_existing=args.skip_existing,
+                                 rate_limit=rate_limit)
             except EmberError as e:
                 print()
                 _report_error(str(e), prefix="  error")

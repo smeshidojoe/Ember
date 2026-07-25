@@ -11,13 +11,13 @@ The only required dependency is `requests`. Python 3.9+.
 
 ## Supported services
 
-**16 services:**
+**18 services:**
 
 | Service | Extracts | Notes |
 |---|---|---|
 | TikTok | videos, photo posts, music | |
 | Twitter/X | videos, GIFs, photos | NSFW tweets need cookies |
-| Instagram | posts, Reels, carousels | anonymously often preview-only; cookies for full quality |
+| Instagram | posts, Reels, carousels, Stories, highlights | anonymously often preview-only; Stories/highlights need cookies |
 | Reddit | videos, GIFs, images, galleries | may be IP-blocked on VPN/datacenter |
 | Vimeo | videos (mp4/HLS) | |
 | SoundCloud | tracks, sets | premium tracks give a 30s preview anonymously |
@@ -31,6 +31,8 @@ The only required dependency is `requests`. Python 3.9+.
 | Facebook | videos, Reels | usually needs cookies |
 | Twitch | clips only | not VODs/streams |
 | Pornhub | videos | age wall bypassed automatically |
+| XVideos | videos (HLS) | mirror domains supported |
+| RedGifs | videos | |
 
 > Reddit, Newgrounds and OK.ru block anonymous requests from datacenter/VPN addresses
 > (they work on a normal home IP); Instagram and Facebook may require cookies for full

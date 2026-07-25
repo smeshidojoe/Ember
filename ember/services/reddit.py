@@ -86,9 +86,10 @@ def extract(ctx: Context, url: str) -> Result:
     author = post.get("author")
     hint = safe_filename(f"reddit_{post_id}_{title or ''}")
 
-    def result(kind, media):
+    def result(kind, media, duration=None):
         return Result(service=SERVICE, kind=kind, media=media, title=title,
                       author=author, source_url=url, filename_hint=hint,
+                      duration=duration,
                       timestamp=to_timestamp(post.get("created_utc")),
                       view_count=post.get("view_count"),
                       like_count=post.get("ups"))
@@ -120,9 +121,11 @@ def extract(ctx: Context, url: str) -> Result:
         quality = f"{reddit_video['height']}p" if reddit_video.get("height") else None
         video = Media(kind="video", url=video_url, ext="mp4", quality=quality)
         audio_url = _find_audio(ctx, video_url)
+        duration = reddit_video.get("duration")
         if audio_url:
-            return result("merge", [video, Media(kind="audio", url=audio_url, ext="mp4")])
-        return result("single", [video])
+            return result("merge", [video, Media(kind="audio", url=audio_url, ext="mp4")],
+                          duration=duration)
+        return result("single", [video], duration=duration)
 
     # обычная картинка
     if post.get("post_hint") == "image" and direct:

@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -74,6 +75,33 @@ class DownloadProgress:
 ProgressCb = Callable[[DownloadProgress], None]
 
 
+class RateLimiter:
+    """Token bucket capping total bytes/sec, shared across threads.
+
+    One instance per download() call, so a parallel gallery or parallel HLS
+    segments stay under the same overall cap rather than one cap each."""
+
+    def __init__(self, rate: float):
+        self.rate = rate
+        self._tokens = rate
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+
+    def consume(self, amount: int) -> None:
+        while amount > 0:
+            with self._lock:
+                now = time.monotonic()
+                self._tokens = min(self.rate,
+                                   self._tokens + (now - self._last) * self.rate)
+                self._last = now
+                take = min(amount, self._tokens)
+                self._tokens -= take
+                amount -= take
+                wait = 0.0 if amount <= 0 else min(amount, self.rate) / self.rate
+            if wait:
+                time.sleep(wait)
+
+
 def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
@@ -93,7 +121,8 @@ def probe_size(media: Media, ctx: Optional[Context] = None) -> Optional[int]:
 # ----------------------------------------------------------------------------
 
 def _stream_to_file(ctx: Context, media: Media, out: Path,
-                    on_progress: Optional[ProgressCb], resume: bool) -> None:
+                    on_progress: Optional[ProgressCb], resume: bool,
+                    limiter: Optional[RateLimiter] = None) -> None:
     part = out.with_suffix(out.suffix + ".part")
     headers = dict(media.http_headers or {})
     mode = "wb"
@@ -122,6 +151,8 @@ def _stream_to_file(ctx: Context, media: Media, out: Path,
             for chunk in r.iter_content(65536):
                 if not chunk:
                     continue
+                if limiter:
+                    limiter.consume(len(chunk))
                 f.write(chunk)
                 prog.downloaded += len(chunk)
                 if on_progress:
@@ -144,7 +175,8 @@ def _stream_to_file(ctx: Context, media: Media, out: Path,
 def _assemble_hls(ctx: Context, playlist_url: str, headers: Optional[dict],
                   out: Path, *, concurrency: int,
                   on_progress: Optional[ProgressCb],
-                  prog: Optional[DownloadProgress]) -> bool:
+                  prog: Optional[DownloadProgress],
+                  limiter: Optional[RateLimiter] = None) -> bool:
     """Download a media playlist (init + segments) into one file.
     Returns True if fMP4 (otherwise MPEG-TS)."""
     text = ctx.get(playlist_url, headers=headers or None).text
@@ -167,6 +199,8 @@ def _assemble_hls(ctx: Context, playlist_url: str, headers: Optional[dict],
         r = ctx.get(url, headers=headers or None)
         if r.status_code != 200:
             raise NetworkError(f"HTTP {r.status_code} on an HLS segment")
+        if limiter:
+            limiter.consume(len(r.content))
         return r.content
 
     def decrypt(idx: int, data: bytes) -> bytes:
@@ -282,17 +316,22 @@ def download_media(media: Media, out_path: str, *,
                    on_progress: Optional[ProgressCb] = None,
                    resume: bool = True,
                    audio_only: bool = False,
+                   skip_existing: bool = False,
+                   limiter: Optional[RateLimiter] = None,
                    meta: Optional[dict] = None) -> str:
     """Download one Media. Returns the ACTUAL file path."""
     ctx = ctx or make_context()
     out = Path(out_path)
+    if skip_existing and out.exists():
+        log.info("skip existing %s", out)
+        return str(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     log.info("download %s -> %s", media.ext, out)
 
     if media.ext != "m3u8":
         chosen = Media(kind=media.kind, url=_pick_progressive_url(media, max_height),
                        ext=media.ext, http_headers=media.http_headers)
-        _stream_to_file(ctx, chosen, out, on_progress, resume)
+        _stream_to_file(ctx, chosen, out, on_progress, resume, limiter)
         result_path = out
     else:
         # per-quality m3u8 (no master, e.g. Pornhub): pick by max_height here
@@ -303,10 +342,11 @@ def download_media(media: Media, out_path: str, *,
                       http_headers=media.http_headers)
         result_path = _download_hls(ctx, m, out, max_height=max_height,
                                     concurrency=concurrency, on_progress=on_progress,
-                                    meta=meta)
+                                    meta=meta, limiter=limiter)
 
-    # метаданные для прямых файлов (для HLS уже вшиты при remux/mux)
-    if meta and media.ext != "m3u8" and ffmpeg_available():
+    # метаданные для прямых файлов (для HLS уже вшиты при remux/mux);
+    # только video/audio — remux картинки через ffmpeg бессмыслен и хрупок
+    if meta and media.ext != "m3u8" and media.kind in ("video", "audio") and ffmpeg_available():
         if on_progress:
             on_progress(DownloadProgress(stage="metadata", path=str(result_path)))
         _embed_metadata(result_path, meta)
@@ -322,7 +362,8 @@ def download_media(media: Media, out_path: str, *,
 
 def _download_hls(ctx: Context, media: Media, out: Path, *,
                   max_height: Optional[int], concurrency: int,
-                  on_progress: Optional[ProgressCb], meta: Optional[dict]) -> Path:
+                  on_progress: Optional[ProgressCb], meta: Optional[dict],
+                  limiter: Optional[RateLimiter] = None) -> Path:
     master_text = ctx.get(media.url, headers=media.http_headers or None).text
     if hls.looks_like_media_playlist(master_text):
         variant_url, audio_url = media.url, None
@@ -339,7 +380,7 @@ def _download_hls(ctx: Context, media: Media, out: Path, *,
         vpath = Path(tmp) / "v"
         is_fmp4 = _assemble_hls(ctx, variant_url, media.http_headers, vpath,
                                 concurrency=concurrency, on_progress=on_progress,
-                                prog=prog)
+                                prog=prog, limiter=limiter)
         if audio_url:
             if not ffmpeg_available():
                 raise ExtractionError(
@@ -347,7 +388,8 @@ def _download_hls(ctx: Context, media: Media, out: Path, *,
                     "ffmpeg in PATH (or pass the m3u8 to yt-dlp)", "download")
             apath = Path(tmp) / "a"
             _assemble_hls(ctx, audio_url, media.http_headers, apath,
-                          concurrency=concurrency, on_progress=None, prog=None)
+                          concurrency=concurrency, on_progress=None, prog=None,
+                          limiter=limiter)
             if on_progress:
                 on_progress(DownloadProgress(stage="mux", path=str(out)))
             _mux(vpath, apath, out, meta)
@@ -388,19 +430,26 @@ def download(result: Result, out_dir: str = ".", *,
              embed_metadata: bool = False,
              subtitles: bool = False,
              thumbnail: bool = False,
-             write_info: bool = False) -> List[str]:
+             write_info: bool = False,
+             skip_existing: bool = False,
+             rate_limit: Optional[float] = None) -> List[str]:
     """Download a whole Result. Returns paths of the created files.
 
     filename — base file name without extension; if omitted, taken from
     metadata (result.filename_hint, i.e. from the site).
     subtitles/thumbnail — also save subtitle tracks / the cover image.
     write_info=True — save a {base}.info.json sidecar with all metadata.
+    skip_existing=True — do not re-download files that are already there.
+    rate_limit — cap total download speed, bytes/sec (None = unlimited).
+    concurrency — parallel HLS segments; for a gallery, also how many items
+    are fetched at once.
     """
     ctx = ctx or make_context()
     base = safe_filename(filename) if filename else (result.filename_hint or "media")
     meta = None
     if embed_metadata:
         meta = {"title": result.title, "artist": result.author}
+    limiter = RateLimiter(rate_limit) if rate_limit else None
 
     written: List[str] = []
     if result.kind == "merge":
@@ -410,44 +459,71 @@ def download(result: Result, out_dir: str = ".", *,
                 "download")
         video, audio = result.media[0], result.media[1]
         with tempfile.TemporaryDirectory() as tmp:
-            vp = Path(tmp) / f"v.{video.ext}"
-            ap = Path(tmp) / f"a.{audio.ext}"
-            download_media(video, str(vp), ctx=ctx, max_height=max_height,
-                           concurrency=concurrency, on_progress=on_progress)
-            download_media(audio, str(ap), ctx=ctx, on_progress=on_progress)
+            # HLS video/audio (ext="m3u8") is remuxed by download_media into a
+            # real container before we mux it, so the temp file must NOT keep
+            # the .m3u8 extension (ffmpeg picks its muxer from it)
+            v_ext = "mp4" if video.ext == "m3u8" else video.ext
+            a_ext = "mp4" if audio.ext == "m3u8" else audio.ext
+            vp = Path(tmp) / f"v.{v_ext}"
+            ap = Path(tmp) / f"a.{a_ext}"
             out = Path(out_dir) / f"{base}.mp4"
+            if skip_existing and out.exists():
+                log.info("skip existing %s", out)
+                return [str(out)]
+            download_media(video, str(vp), ctx=ctx, max_height=max_height,
+                           concurrency=concurrency, on_progress=on_progress,
+                           limiter=limiter)
+            download_media(audio, str(ap), ctx=ctx, on_progress=on_progress,
+                           limiter=limiter)
             out.parent.mkdir(parents=True, exist_ok=True)
             _mux(vp, ap, out, meta)
         written = [str(out)]
     else:
         multiple = len(result.media) > 1
-        for i, media in enumerate(result.media, 1):
+        total = len(result.media)
+
+        def one(item):
+            i, media = item
             suffix = f"_{i}" if multiple else ""
             ext = "mp4" if media.ext == "m3u8" else media.ext
             out = Path(out_dir) / f"{base}{suffix}.{ext}"
+            # параллельная галерея: сегменты каждого элемента качаем
+            # последовательно, иначе потоки перемножаются
+            seg_workers = 1 if (multiple and concurrency > 1) else concurrency
             try:
-                written.append(download_media(
+                return download_media(
                     media, str(out), ctx=ctx, max_height=max_height,
-                    concurrency=concurrency, on_progress=on_progress,
-                    audio_only=audio_only, meta=meta))
+                    concurrency=seg_workers, on_progress=on_progress,
+                    audio_only=audio_only, skip_existing=skip_existing,
+                    limiter=limiter, meta=meta)
             except (EmberError, OSError) as e:
                 # один битый элемент карусели не должен рушить всю галерею
                 if not multiple:
                     raise
-                log.warning("gallery item %d/%d failed: %s",
-                            i, len(result.media), e)
+                log.warning("gallery item %d/%d failed: %s", i, total, e)
+                return None
+
+        items = list(enumerate(result.media, 1))
+        if multiple and concurrency > 1:
+            with ThreadPoolExecutor(max_workers=min(concurrency, total)) as pool:
+                written = [p for p in pool.map(one, items) if p]
+        else:
+            written = [p for p in map(one, items) if p]
 
     if subtitles and result.subtitles:
         written += _download_subtitles(result, out_dir, base, ctx)
     if thumbnail and result.thumbnail:
         ext = os.path.splitext(result.thumbnail.split("?")[0])[1].lstrip(".") or "jpg"
         tp = Path(out_dir) / f"{base}.{ext}"
-        try:
-            _stream_to_file(ctx, Media(kind="image", url=result.thumbnail, ext=ext),
-                            tp, None, False)
+        if skip_existing and tp.exists():
             written.append(str(tp))
-        except (NetworkError, OSError) as e:
-            log.warning("thumbnail failed: %s", e)
+        else:
+            try:
+                _stream_to_file(ctx, Media(kind="image", url=result.thumbnail, ext=ext),
+                                tp, None, False, limiter)
+                written.append(str(tp))
+            except (NetworkError, OSError) as e:
+                log.warning("thumbnail failed: %s", e)
     if write_info:
         ip = Path(out_dir) / f"{base}.info.json"
         ip.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2),

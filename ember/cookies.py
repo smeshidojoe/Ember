@@ -38,6 +38,8 @@ _DOMAIN_HINTS = {
     "facebook": ["facebook.com"],
     "twitch": ["twitch.tv"],
     "pornhub": ["pornhub.com"],
+    "xvideos": ["xvideos.com"],
+    "redgifs": ["redgifs.com"],
 }
 
 

@@ -12,10 +12,11 @@ from __future__ import annotations
 import json
 import math
 import re
+from typing import Optional
 
 from ..errors import ExtractionError
 from ..http import Context
-from ..models import Media, MediaVariant, Result, safe_filename
+from ..models import Media, MediaVariant, Result, safe_filename, to_timestamp
 
 SERVICE = "twitter"
 
@@ -157,7 +158,8 @@ def _from_graphql(ctx: Context, tweet_id: str):
     return result
 
 
-def _append_entry(entry: dict, media_items: list, thumbs: list) -> None:
+def _append_entry(entry: dict, media_items: list, thumbs: list,
+                  durations: Optional[list] = None) -> None:
     """Append media from mediaDetails/extended_entities with quality variants."""
     etype = entry.get("type")
     if etype in ("video", "animated_gif"):
@@ -179,10 +181,27 @@ def _append_entry(entry: dict, media_items: list, thumbs: list) -> None:
                                  quality=variants[0].quality, variants=variants))
         if entry.get("media_url_https"):
             thumbs.append(entry["media_url_https"])
+        if durations is not None and info.get("duration_millis"):
+            durations.append(info["duration_millis"] / 1000)
     elif etype == "photo" and entry.get("media_url_https"):
         media_items.append(Media(kind="photo",
                                  url=entry["media_url_https"] + "?name=orig",
                                  ext="jpg"))
+
+
+def _parse_created_at(s: Optional[str]) -> Optional[int]:
+    """created_at is ISO-8601 from syndication, but the classic
+    'Wed Jun 25 20:04:07 +0000 2025' format from GraphQL legacy."""
+    if not s:
+        return None
+    ts = to_timestamp(s)
+    if ts is not None:
+        return ts
+    try:
+        from email.utils import parsedate_to_datetime
+        return int(parsedate_to_datetime(s).timestamp())
+    except (TypeError, ValueError):
+        return None
 
 
 def extract(ctx: Context, url: str) -> Result:
@@ -191,7 +210,9 @@ def extract(ctx: Context, url: str) -> Result:
         raise ExtractionError("no tweet id in the link", SERVICE)
     tweet_id = m.group(1)
 
-    media_items, thumbs, title, author = [], [], None, None
+    media_items, thumbs, durations = [], [], []
+    title = author = None
+    timestamp = view_count = like_count = None
 
     # с cookies аккаунта GraphQL видит и NSFW-твиты — syndication нет,
     # поэтому при наличии авторизации идём сразу в GraphQL
@@ -199,8 +220,10 @@ def extract(ctx: Context, url: str) -> Result:
     if data:
         title = (data.get("text") or "").strip() or None
         author = (data.get("user") or {}).get("screen_name")
+        timestamp = _parse_created_at(data.get("created_at"))
+        like_count = data.get("favorite_count")
         for entry in data.get("mediaDetails") or []:
-            _append_entry(entry, media_items, thumbs)
+            _append_entry(entry, media_items, thumbs, durations)
 
     if not media_items:
         result = _from_graphql(ctx, tweet_id)
@@ -212,9 +235,14 @@ def extract(ctx: Context, url: str) -> Result:
             author = ((core_user.get("legacy") or {}).get("screen_name")
                       or (core_user.get("core") or {}).get("screen_name")
                       or author)
+            timestamp = timestamp or _parse_created_at(legacy.get("created_at"))
+            like_count = like_count if like_count is not None else legacy.get("favorite_count")
+            views = result.get("views") or {}
+            if views.get("count") and str(views["count"]).isdigit():
+                view_count = int(views["count"])
             entities = (legacy.get("extended_entities") or {}).get("media") or []
             for entry in entities:
-                _append_entry(entry, media_items, thumbs)
+                _append_entry(entry, media_items, thumbs, durations)
 
     if not media_items:
         if has_auth_cookies(ctx):
@@ -230,7 +258,9 @@ def extract(ctx: Context, url: str) -> Result:
     kind = "single" if len(media_items) == 1 else "gallery"
     return Result(service=SERVICE, kind=kind, media=media_items, title=title,
                   author=author, source_url=url, filename_hint=hint,
-                  thumbnail=thumbs[0] if thumbs else None)
+                  thumbnail=thumbs[0] if thumbs else None,
+                  duration=durations[0] if durations else None,
+                  timestamp=timestamp, view_count=view_count, like_count=like_count)
 
 
 def extract_timeline(ctx: Context, url: str, limit: int = 30):

@@ -3,7 +3,7 @@ from ember.router import _match_service
 
 
 def test_supported_services_count():
-    assert len(ember.supported_services()) == 16
+    assert len(ember.supported_services()) == 18
 
 
 def test_can_extract_positive():

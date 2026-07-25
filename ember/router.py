@@ -15,15 +15,15 @@ from .errors import EmberError, UnsupportedUrlError
 from .http import make_context
 from .models import Playlist, Result
 from .services import (bluesky, facebook, instagram, newgrounds, ok, pinterest,
-                       pornhub, reddit, rutube, soundcloud, tiktok, tumblr,
-                       twitch, twitter, vimeo, vk)
+                       pornhub, redgifs, reddit, rutube, soundcloud, tiktok,
+                       tumblr, twitch, twitter, vimeo, vk, xvideos)
 
 log = logging.getLogger(__name__)
 
 _SERVICES = [
     tiktok, twitter, instagram, reddit,
     vimeo, soundcloud, pinterest, tumblr, bluesky, newgrounds,
-    rutube, ok, vk, facebook, twitch, pornhub,
+    rutube, ok, vk, facebook, twitch, pornhub, xvideos, redgifs,
 ]
 
 
@@ -51,6 +51,14 @@ def _match_profile(url: str):
 def _match_playlist(url: str):
     for service in _SERVICES:
         for pattern in getattr(service, "PLAYLIST_PATTERNS", ()):
+            if pattern.match(url):
+                return service
+    return None
+
+
+def _match_highlights(url: str):
+    for service in _SERVICES:
+        for pattern in getattr(service, "HIGHLIGHTS_PATTERNS", ()):
             if pattern.match(url):
                 return service
     return None
@@ -163,6 +171,39 @@ def supports_timeline(url: str) -> bool:
     """True if author-timeline extraction is available for the URL."""
     service = _match_profile(url.strip())
     return service is not None and hasattr(service, "extract_timeline")
+
+
+def supports_highlights(url: str) -> bool:
+    """True if story-highlight extraction is available for the URL."""
+    service = _match_highlights(url.strip())
+    return service is not None and hasattr(service, "extract_highlights")
+
+
+def extract_highlights(
+    url: str,
+    *,
+    limit: int = 30,
+    timeout: float = 15.0,
+    proxies: Optional[dict] = None,
+    cookies: Optional[dict] = None,
+    cookies_from_browser: Optional[str] = None,
+    browser_profile: Optional[str] = None,
+    session: Optional[requests.Session] = None,
+) -> Playlist:
+    """List a profile's story highlights (the pinned covers above the posts).
+
+    Returns a Playlist with one entry per highlight collection; each entry is
+    a gallery of that collection's stories. Currently: Instagram (needs
+    account cookies). Same auth params as extract().
+    """
+    url = url.strip()
+    service = _match_highlights(url)
+    if service is None or not hasattr(service, "extract_highlights"):
+        raise UnsupportedUrlError(
+            f"highlights are not supported for this URL: {url}")
+    ctx = _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
+                     browser_profile, service.SERVICE)
+    return service.extract_highlights(ctx, url, limit)
 
 
 def extract_timeline(
