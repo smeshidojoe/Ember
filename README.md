@@ -40,11 +40,20 @@ The only required dependency is `requests`. Python 3.9+.
 
 ## Installation
 
-Not on PyPI — install from source or from Git:
+```bash
+pip install ember-dl
+```
+
+The distribution is named `ember-dl`, the import name stays `ember`:
+
+```python
+import ember
+```
+
+Latest development version straight from Git:
 
 ```bash
-# from a repository
-pip install git+https://github.com/USER/ember.git
+pip install git+https://github.com/smeshidojoe/Ember.git
 ```
 
 After installation both the Python API (`import ember`) and the `ember` command are available.

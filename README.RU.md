@@ -40,11 +40,20 @@
 
 ## Установка
 
-Пакета нет в PyPI — ставится из исходников или из Git:
+```bash
+pip install ember-dl
+```
+
+Пакет называется `ember-dl`, а импорт остаётся `ember`:
+
+```python
+import ember
+```
+
+Свежая версия прямо из Git:
 
 ```bash
-# из репозитория
-pip install git+https://github.com/USER/ember.git
+pip install git+https://github.com/smeshidojoe/Ember.git
 ```
 
 После установки доступны и Python-API (`import ember`), и команда `ember`.
