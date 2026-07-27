@@ -17,6 +17,12 @@ classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 
+[project.urls]
+Homepage = "https://smeshidojoe.github.io/Ember/"
+Documentation = "https://smeshidojoe.github.io/Ember/docs/"
+Source = "https://github.com/smeshidojoe/Ember"
+Issues = "https://github.com/smeshidojoe/Ember/issues"
+
 [project.optional-dependencies]
 # --cookies-from-browser works out of the box (no extra deps) for Firefox and Windows-Chromium;
 # yt-dlp is only an optional fallback (e.g. Chromium on macOS/Linux)
