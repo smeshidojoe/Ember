@@ -26,9 +26,23 @@ Extract a set/playlist (currently SoundCloud sets). Single link → `Playlist` w
 
 ### `extract_timeline(url, *, limit=30, **same kwargs) -> Playlist`
 List an author's latest posts by profile/channel URL. Returns a `Playlist` of
-`Result`s (one per post/track/video), up to `limit`. Supported: SoundCloud, VK,
-Twitch, Tumblr, Rutube, Vimeo, Pinterest, Twitter/X, Instagram. Instagram and
-Twitter/X may need cookies or a non-blocked IP.
+`Result`s (one per post/track/video), up to `limit`. Supported: Twitter/X,
+Instagram, Vimeo, SoundCloud, Pinterest, Tumblr, Rutube, VK, Twitch. Instagram
+and Twitter/X may need cookies or a non-blocked IP.
+
+### `extract_highlights(url, *, limit=30, **same kwargs) -> Playlist`
+List a profile's story highlights (the pinned covers above the posts) from a
+**profile URL**. One entry per highlight collection; each entry is a `"gallery"`
+`Result` holding that collection's stories, with `title` set to the highlight's
+name. Currently Instagram only, and it **requires account cookies**.
+
+```python
+pl = ember.extract_highlights("https://www.instagram.com/USER/", limit=5,
+                              cookies_from_browser="firefox")
+for entry in pl.entries:
+    print(entry.title, len(entry.media))
+    ember.download(entry, "downloads/")
+```
 
 ### `can_extract(url) -> bool`
 True if the URL matches a supported service (else hand it to yt-dlp).
@@ -42,29 +56,76 @@ show playlist UI.)
 ### `supports_timeline(url) -> bool`
 True if the URL is a profile/channel with author-timeline support.
 
+### `supports_highlights(url) -> bool`
+True if the URL is a profile with story-highlight support (Instagram).
+
 ### `supported_services() -> list[str]`
-List of service names.
+List of service names (18).
 
 ## Download
 
-### `download(result, out_dir=".", *, filename=None, ctx=None, max_height=None, concurrency=1, on_progress=None, audio_only=False, embed_metadata=False, subtitles=False, thumbnail=False, write_info=False) -> list[str]`
+### `download(result, out_dir=".", *, filename=None, ctx=None, max_height=None, concurrency=1, on_progress=None, audio_only=False, embed_metadata=False, subtitles=False, thumbnail=False, write_info=False, skip_existing=False, rate_limit=None) -> list[str]`
 Download a whole `Result`. Returns paths of written files.
 - **filename** `str | None` — base name without extension (default: from metadata).
 - **max_height** `int | None` — cap quality (e.g. `720`).
-- **concurrency** `int` — parallel HLS segments.
+- **concurrency** `int` — parallel workers. For a single media it fetches HLS
+  segments in parallel; for a `"gallery"` it downloads the items in parallel
+  (output order and names stay stable regardless of the value).
 - **on_progress** `Callable[[DownloadProgress], None] | None`.
 - **audio_only** `bool` — extract audio (needs ffmpeg).
-- **embed_metadata** `bool` — write title/author (needs ffmpeg).
+- **embed_metadata** `bool` — write title/author (needs ffmpeg). Applies to
+  video/audio only; photos are left byte-for-byte untouched.
 - **subtitles** `bool` — also download subtitle tracks.
 - **thumbnail** `bool` — also save the cover image.
 - **write_info** `bool` — save a `{base}.info.json` sidecar with all metadata.
+- **skip_existing** `bool` — if the target file already exists, keep it and skip
+  the download (the path is still returned, so the result list stays complete).
+- **rate_limit** `float | None` — cap **total** download speed in bytes/sec
+  (e.g. `1_000_000` ≈ 1 MB/s). One budget is shared by every thread of the call,
+  so raising `concurrency` does not multiply the cap.
 - HLS: single stream assembles without ffmpeg; separate audio/video and `kind="merge"` need ffmpeg.
+- A failing item in a gallery is logged and skipped; a single-media failure raises.
 
-### `download_media(media, out_path, *, ctx=None, max_height=None, concurrency=1, on_progress=None, resume=True, audio_only=False, meta=None) -> str`
+### `download_media(media, out_path, *, ctx=None, max_height=None, concurrency=1, on_progress=None, resume=True, audio_only=False, skip_existing=False, limiter=None, meta=None) -> str`
 Download one `Media`. Returns the actual path (extension may become `.ts` without ffmpeg).
+- **resume** `bool` — reuse a leftover `.part` via HTTP Range. A `.part` is kept
+  after a network failure (so the next run resumes) and removed on Ctrl+C.
+- **limiter** `RateLimiter | None` — share one speed budget across several calls.
+- **meta** `dict | None` — `{"title": ..., "artist": ...}` written into the
+  container (needs ffmpeg). `download()` fills this from the `Result` when
+  `embed_metadata=True`.
 
-### `available_qualities(media, ctx=None) -> list[int]`
+Both download functions take **ctx** `Context | None` — reuse the context from
+`extract()` (or build one with `ember.http.make_context()`) to keep the same
+session, cookies, proxy and timeout for the download. Omitted, a fresh
+cookie-less context is created, which fails for CDNs that require the
+extraction session.
+
+### `RateLimiter(rate)`
+Token bucket capping total bytes/sec, safe to share across threads. `download()`
+builds one internally from `rate_limit=`; construct it yourself only to cap
+several `download_media()` calls together:
+
+```python
+limiter = ember.RateLimiter(500_000)          # 500 KB/s for both files
+ember.download_media(a, "a.mp4", limiter=limiter)
+ember.download_media(b, "b.mp4", limiter=limiter)
+```
+
+### `available_qualities(media, ctx=None, *, exclude=(), ascending=False) -> list[int]`
 Available heights, e.g. `[1080, 720, 480]`. Parses the HLS master for m3u8 media.
+- **exclude** — heights to leave out, e.g. `exclude=[360, 480]` when your UI hides
+  those rows. Accepts ints or strings; heights the media doesn't have are ignored.
+  Excluding everything returns `[]` — the caller decides what to show then.
+- **ascending** — order low→high instead of the default high→low.
+
+Any value from the list feeds straight back into `max_height=`:
+
+```python
+heights = ember.available_qualities(result.media[0], exclude=hidden)
+if heights:
+    ember.download(result, "downloads/", max_height=heights[0])   # best allowed
+```
 
 ### `probe_size(media, ctx=None) -> int | None`
 File size in bytes before downloading (from `Content-Length`). One request, no
@@ -148,6 +209,11 @@ def on_progress(p: ember.DownloadProgress):
 ember.download(result, "downloads/", on_progress=on_progress)
 ```
 
+## Version
+
+### `__version__ -> str`
+Package version, e.g. `"0.8.1"`. Same value the CLI prints for `ember --version`.
+
 ## Errors
 
 `EmberError` (base) → `UnsupportedUrlError`, `NetworkError`, `ExtractionError`.
@@ -163,6 +229,14 @@ import logging
 logging.basicConfig()
 logging.getLogger("ember").setLevel(logging.INFO)   # or DEBUG
 ```
+
+## CLI
+
+Everything above is reachable from the `ember` command; `ember --help` lists all
+flags. Notable ones mirroring this API: `--highlights` (`extract_highlights`),
+`--timeline`, `--playlist`, `--skip-existing`, `--rate-limit BYTES_PER_SEC`,
+`--size` (`probe_size`), `--write-info`, `--thumbnail`, `--list-services`,
+`--version`. Without `-d` the command only prints — nothing is downloaded.
 
 ## Typical embedding pattern
 

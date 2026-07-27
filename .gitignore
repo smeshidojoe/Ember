@@ -6,25 +6,29 @@ build/
 dist/
 .eggs/
 
-# окружения
+
 .venv/
 venv/
 env/
 
-# IDE / инструменты
+# IDE
 .vscode/
 .idea/
 .claude/
 .pytest_cache/
 
-# приватная подробная документация (только для себя, НЕ на гитхаб)
-DOCS.md
 
-# личное — НЕ коммитить cookies!
+DOCS.md
+PUBLISHING.md
+
+
 cookies.txt
 *.cookies
 
-# кэш и скачанные файлы
+
+.pypirc
+
+
 cache.json
 ember_cache.json
 *.ts

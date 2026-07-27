@@ -88,6 +88,10 @@ Link check and quality list:
 ember.can_extract(url)                 # is the link supported
 ember.available_qualities(result.media[0])   # e.g. [1080, 720, 480]
 ember.ffmpeg_available()               # is ffmpeg present
+
+# building a quality selector: hide rows and choose the order
+ember.available_qualities(result.media[0], exclude=[360, 480])   # drop those rows
+ember.available_qualities(result.media[0], ascending=True)       # low -> high
 ```
 
 Playlists (SoundCloud sets for now):
@@ -98,13 +102,31 @@ if ember.supports_playlist(url):
         ember.download(entry, "downloads/")
 ```
 
-Author timeline — latest posts by profile/channel URL (SoundCloud, VK, Twitch,
-Tumblr, Rutube, Vimeo, Pinterest, Twitter/X, Instagram):
+Author timeline — latest posts by profile/channel URL (Twitter/X, Instagram,
+Vimeo, SoundCloud, Pinterest, Tumblr, Rutube, VK, Twitch):
 
 ```python
 if ember.supports_timeline(url):                 # e.g. "https://x.com/nasa"
     for entry in ember.extract_timeline(url, limit=30).entries:
         ember.download(entry, "downloads/")
+```
+
+Instagram story highlights of a profile (one entry per collection, needs cookies):
+
+```python
+pl = ember.extract_highlights("https://www.instagram.com/USER/",
+                              cookies_from_browser="firefox")
+for entry in pl.entries:
+    print(entry.title, len(entry.media))
+    ember.download(entry, "downloads/")
+```
+
+Long batches — don't redo finished files, and stay polite on the network:
+
+```python
+ember.download(result, "downloads/",
+               skip_existing=True,      # keep what is already on disk
+               rate_limit=1_000_000)    # ~1 MB/s total, shared by all threads
 ```
 
 ## Quick start — command line
@@ -134,9 +156,15 @@ ember -d --audio-only --embed-metadata "https://soundcloud.com/user/track"
 # a whole playlist / set
 ember -d --playlist "https://soundcloud.com/user/sets/name"
 
-# cookies (NSFW tweets, private Instagram)
+# cookies (NSFW tweets, private Instagram, closed VK groups)
 ember "https://x.com/user/status/123" --cookies "auth_token=...; ct0=..."
 ember "https://x.com/user/status/123" --cookies-from-browser firefox
+
+# Instagram story highlights of a profile (needs cookies)
+ember --highlights --cookies-from-browser firefox "https://www.instagram.com/USER/"
+
+# resume a batch politely: skip finished files, cap speed at ~1 MB/s
+ember -d -a links.txt --skip-existing --rate-limit 1000000
 ```
 
 ## Flags cheat sheet
@@ -155,26 +183,36 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | `--subs` | also download subtitle tracks; implies download |
 | `--concurrency N` | parallel HLS segments (default `1`) |
 | `--embed-metadata` (`--metadata`) | write title/author into the file (needs ffmpeg); implies download |
+| `--thumbnail` | also save the cover image; implies download |
+| `--write-info` | save a `{name}.info.json` sidecar with all metadata; implies download |
+| `--skip-existing` | keep files that are already on disk instead of re-downloading |
+| `--rate-limit N` | cap total speed in bytes/sec (e.g. `1000000` ≈ 1 MB/s), shared across threads |
+| `--size` | show file size before downloading (one extra request) |
 | `--playlist` | treat as a set (SoundCloud sets) |
 | `--timeline` | treat the URL as a profile/channel, list latest posts |
-| `--limit N` | max items for `--timeline` (default `30`) |
+| `--highlights` | treat the URL as a profile, list its story highlights (Instagram; needs cookies) |
+| `--limit N` | max items for `--timeline` / `--highlights` (default `30`) |
 | `--proxy URL` | proxy for all requests, e.g. `http://host:port` (helps with IP-blocked sites) |
 | `--timeout SEC` | per-request timeout, seconds (default `15`) |
 | `--cookies "a=1; b=2"` | cookies as a string |
 | `--cookies-file FILE` | cookies.txt in Netscape format (like yt-dlp) |
 | `--cookies-from-browser B` | cookies from a browser: brave/chrome/chromium/edge/firefox/opera/safari/vivaldi/whale |
 | `--browser-profile P` | browser profile for the previous flag |
+| `--list-services` | print supported services and exit |
+| `--version` | print the version and exit |
 | `-h`, `--help` | show help and exit |
 
 Terminal help — `ember --help` or `ember -h`:
 
 ```
-usage: ember [-h] [-a FILE] [--json] [-F] [-v] [--timeout SEC] [-d]
-             [-o NAME] [-p DIR] [--max-height N] [--audio-only] [--subs]
-             [--concurrency N] [--embed-metadata] [--playlist] [--proxy URL]
-             [--cookies "name=value; ..."] [--cookies-file cookies.txt]
-             [--cookies-from-browser BROWSER] [--browser-profile PROFILE]
-             [url]
+usage: ember [-h] [--version] [--list-services] [-a FILE] [--json] [-F] [-v]
+             [--timeout SEC] [-d] [-o NAME] [-p DIR] [--max-height N]
+             [--audio-only] [--subs] [--thumbnail] [--write-info] [--size]
+             [--concurrency N] [--skip-existing] [--rate-limit N]
+             [--embed-metadata] [--playlist] [--timeline] [--highlights]
+             [--limit N] [--proxy URL] [--cookies "name=value; ..."]
+             [--cookies-file cookies.txt] [--cookies-from-browser BROWSER]
+             [--browser-profile PROFILE] [url]
 ```
 
 ## How it works

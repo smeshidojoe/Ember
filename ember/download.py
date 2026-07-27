@@ -291,22 +291,39 @@ def _pick_progressive_url(media: Media, max_height: Optional[int]) -> str:
     return min(media.variants, key=lambda v: v.height or 0).url
 
 
-def available_qualities(media: Media, ctx: Optional[Context] = None) -> List[int]:
-    """List of available heights (e.g. [1080, 720, 480]) for quality choice."""
+def _sorted_heights(heights, exclude, ascending: bool) -> List[int]:
+    """Shared tail of available_qualities: drop unwanted, then order."""
+    drop = {int(h) for h in (exclude or ())}
+    return sorted((h for h in set(heights) if h and h not in drop),
+                  reverse=not ascending)
+
+
+def available_qualities(media: Media, ctx: Optional[Context] = None, *,
+                        exclude=(), ascending: bool = False) -> List[int]:
+    """List of available heights (e.g. `[1080, 720, 480]`) for quality choice.
+
+    exclude — heights to leave out, e.g. `exclude=[360, 480]` when your UI hides
+    those rows. Values the media does not have are simply ignored.
+    ascending — order low→high instead of the default high→low.
+
+    The result always feeds `max_height=` straight back into download().
+    """
     if media.variants:                       # progressive or per-quality m3u8
         heights = {v.height for v in media.variants if v.height}
         if media.quality and media.quality.rstrip("p").isdigit():
             heights.add(int(media.quality.rstrip("p")))
-        return sorted(heights, reverse=True)
+        return _sorted_heights(heights, exclude, ascending)
     if media.ext != "m3u8":
-        return [int(media.quality.rstrip("p"))] if (
-            media.quality and media.quality.rstrip("p").isdigit()) else []
+        single = ([int(media.quality.rstrip("p"))] if (
+            media.quality and media.quality.rstrip("p").isdigit()) else [])
+        return _sorted_heights(single, exclude, ascending)
     ctx = ctx or make_context()
     text = ctx.get(media.url, headers=media.http_headers or None).text
     if hls.looks_like_media_playlist(text):
         return []
     master = hls.parse_master(text, media.url)
-    return sorted({v.height for v in master.variants if v.height}, reverse=True)
+    return _sorted_heights({v.height for v in master.variants if v.height},
+                           exclude, ascending)
 
 
 def download_media(media: Media, out_path: str, *,

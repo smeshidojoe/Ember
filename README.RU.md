@@ -89,6 +89,10 @@ paths = ember.download(
 ember.can_extract(url)                 # поддерживается ли ссылка
 ember.available_qualities(result.media[0])   # напр. [1080, 720, 480]
 ember.ffmpeg_available()               # есть ли ffmpeg
+
+# селектор качества: убрать лишние строки и задать порядок
+ember.available_qualities(result.media[0], exclude=[360, 480])   # спрятать эти
+ember.available_qualities(result.media[0], ascending=True)       # от низкого к высокому
 ```
 
 Плейлисты (пока SoundCloud sets):
@@ -99,13 +103,31 @@ if ember.supports_playlist(url):
         ember.download(entry, "downloads/")
 ```
 
-Лента автора — последние посты по ссылке профиля/канала (SoundCloud, VK, Twitch,
-Tumblr, Rutube, Vimeo, Pinterest, Twitter/X, Instagram):
+Лента автора — последние посты по ссылке профиля/канала (Twitter/X, Instagram,
+Vimeo, SoundCloud, Pinterest, Tumblr, Rutube, VK, Twitch):
 
 ```python
 if ember.supports_timeline(url):                 # напр. "https://x.com/nasa"
     for entry in ember.extract_timeline(url, limit=30).entries:
         ember.download(entry, "downloads/")
+```
+
+Highlights профиля Instagram (одна запись на коллекцию, нужны cookies):
+
+```python
+pl = ember.extract_highlights("https://www.instagram.com/USER/",
+                              cookies_from_browser="firefox")
+for entry in pl.entries:
+    print(entry.title, len(entry.media))
+    ember.download(entry, "downloads/")
+```
+
+Длинные батчи — не переделывать готовое и не забивать канал:
+
+```python
+ember.download(result, "downloads/",
+               skip_existing=True,      # оставить то, что уже на диске
+               rate_limit=1_000_000)    # ~1 МБ/с суммарно на все потоки
 ```
 
 ## Быстрый старт — командная строка
@@ -135,9 +157,15 @@ ember -d --audio-only --embed-metadata "https://soundcloud.com/user/track"
 # плейлист/набор целиком
 ember -d --playlist "https://soundcloud.com/user/sets/name"
 
-# cookies (NSFW-твиты, закрытый Instagram)
+# cookies (NSFW-твиты, закрытый Instagram, закрытые группы VK)
 ember "https://x.com/user/status/123" --cookies "auth_token=...; ct0=..."
 ember "https://x.com/user/status/123" --cookies-from-browser firefox
+
+# highlights профиля Instagram (нужны cookies)
+ember --highlights --cookies-from-browser firefox "https://www.instagram.com/USER/"
+
+# длинный батч: пропустить готовое, ограничить скорость ~1 МБ/с
+ember -d -a links.txt --skip-existing --rate-limit 1000000
 ```
 
 ## Шпаргалка по ключам
@@ -156,26 +184,36 @@ ember "https://x.com/user/status/123" --cookies-from-browser firefox
 | `--subs` | также скачать дорожки субтитров; включает загрузку |
 | `--concurrency N` | параллельных сегментов HLS (по умолчанию `1`) |
 | `--embed-metadata` (`--metadata`) | вписать название/автора в файл (нужен ffmpeg); включает загрузку |
+| `--thumbnail` | также сохранить обложку; включает загрузку |
+| `--write-info` | сохранить `{имя}.info.json` со всеми метаданными; включает загрузку |
+| `--skip-existing` | не перекачивать файлы, которые уже есть на диске |
+| `--rate-limit N` | ограничить общую скорость, байт/с (напр. `1000000` ≈ 1 МБ/с), делится на все потоки |
+| `--size` | показать размер файла до загрузки (один дополнительный запрос) |
 | `--playlist` | обработать как набор (SoundCloud sets) |
 | `--timeline` | считать ссылку профилем/каналом, показать последние посты |
-| `--limit N` | максимум элементов для `--timeline` (по умолчанию `30`) |
+| `--highlights` | считать ссылку профилем, показать его highlights (Instagram; нужны cookies) |
+| `--limit N` | максимум элементов для `--timeline` / `--highlights` (по умолчанию `30`) |
 | `--proxy URL` | прокси для всех запросов, напр. `http://host:port` (помогает с блоком по IP) |
 | `--timeout SEC` | таймаут запроса, сек (по умолчанию `15`) |
 | `--cookies "a=1; b=2"` | cookies строкой |
 | `--cookies-file FILE` | cookies.txt в формате Netscape (как у yt-dlp) |
 | `--cookies-from-browser B` | cookies из браузера: brave/chrome/chromium/edge/firefox/opera/safari/vivaldi/whale |
 | `--browser-profile P` | профиль браузера для предыдущего ключа |
+| `--list-services` | вывести список поддерживаемых сервисов и выйти |
+| `--version` | вывести версию и выйти |
 | `-h`, `--help` | показать справку и выйти |
 
 Справка в терминале — `ember --help` или `ember -h`:
 
 ```
-usage: ember [-h] [-a FILE] [--json] [-F] [-v] [--timeout SEC] [-d]
-             [-o NAME] [-p DIR] [--max-height N] [--audio-only] [--subs]
-             [--concurrency N] [--embed-metadata] [--playlist] [--proxy URL]
-             [--cookies "name=value; ..."] [--cookies-file cookies.txt]
-             [--cookies-from-browser BROWSER] [--browser-profile PROFILE]
-             [url]
+usage: ember [-h] [--version] [--list-services] [-a FILE] [--json] [-F] [-v]
+             [--timeout SEC] [-d] [-o NAME] [-p DIR] [--max-height N]
+             [--audio-only] [--subs] [--thumbnail] [--write-info] [--size]
+             [--concurrency N] [--skip-existing] [--rate-limit N]
+             [--embed-metadata] [--playlist] [--timeline] [--highlights]
+             [--limit N] [--proxy URL] [--cookies "name=value; ..."]
+             [--cookies-file cookies.txt] [--cookies-from-browser BROWSER]
+             [--browser-profile PROFILE] [url]
 ```
 
 ## Как это работает
