@@ -7,12 +7,14 @@ Private videos may require account cookies.
 
 from __future__ import annotations
 
+import html
 import re
 import uuid
+from typing import Optional
 
 from .. import cache
 from ..errors import ExtractionError
-from ..http import Context
+from ..http import DEFAULT_UA, Context
 from ..models import Media, MediaVariant, Result, safe_filename
 
 SERVICE = "vk"
@@ -114,16 +116,114 @@ def _item_to_result(item: dict, url: str = "") -> Result:
         view_count=item.get("views"), like_count=(item.get("likes") or {}).get("count"))
 
 
+_QUALITY_KEY = re.compile(r"^url(\d+)$")
+
+
+def _walk_params(node):
+    """Yield every dict in the al_video.php envelope carrying url<height> keys."""
+    if isinstance(node, dict):
+        if any(_QUALITY_KEY.match(k) for k in node):
+            yield node
+        for v in node.values():
+            yield from _walk_params(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _walk_params(v)
+
+
+def has_auth_cookies(ctx: Context) -> bool:
+    return any(ck.name.startswith("remixsid") for ck in ctx.session.cookies)
+
+
+def _from_web(ctx: Context, owner_id: str, video_id: str, url: str) -> Optional[Result]:
+    """Authenticated fallback via the web player endpoint.
+
+    The /method/ API only ever sees the anonymous token, so closed groups and
+    private videos are invisible to it. al_video.php honours the session
+    cookies instead, which is what makes those videos reachable.
+    """
+    try:
+        r = ctx.post("https://vkvideo.ru/al_video.php",
+                     params={"act": "show"},
+                     headers={"User-Agent": DEFAULT_UA,
+                              "X-Requested-With": "XMLHttpRequest",
+                              "Referer": "https://vkvideo.ru/"},
+                     data={"act": "show", "al": "1",
+                           "video": f"{owner_id}_{video_id}"})
+    except Exception:
+        return None
+    if r.status_code != 200:
+        return None
+    try:
+        params = next(_walk_params(r.json()), None)
+    except ValueError:
+        return None
+    if not params:
+        return None
+
+    variants = []
+    for key, val in params.items():
+        m = _QUALITY_KEY.match(key)
+        if m and val:
+            height = int(m.group(1))
+            variants.append(MediaVariant(url=val, height=height,
+                                         quality=f"{height}p", ext="mp4"))
+    if not variants:
+        return None
+    variants.sort(key=lambda v: v.height or 0, reverse=True)
+    best = variants[0]
+
+    title = params.get("md_title")
+    title = html.unescape(title) if title else None
+    author = params.get("md_author") or (str(owner_id) if owner_id else None)
+    return Result(
+        service=SERVICE, kind="single",
+        media=[Media(kind="video", url=best.url, ext="mp4",
+                     quality=best.quality, variants=variants,
+                     http_headers={"User-Agent": DEFAULT_UA})],
+        title=title, author=author, source_url=url,
+        filename_hint=safe_filename(f"vk_{owner_id}_{video_id}_{title or ''}"),
+        thumbnail=params.get("jpg") or None,
+        duration=params.get("duration"), timestamp=params.get("date"),
+        view_count=params.get("views"))
+
+
 def extract(ctx: Context, url: str) -> Result:
     owner_id, video_id, access_key = _parse(url)
     videos = f"{owner_id}_{video_id}" + (f"_{access_key}" if access_key else "")
     data = _api(ctx, {"User-Agent": _UA}, "video.get", {"videos": videos})
+    item = None
     try:
         item = data["response"]["items"][0]
-    except (LookupError, TypeError) as e:
+    except (LookupError, TypeError):
+        pass
+
+    if item:
+        try:
+            return _item_to_result(item, url)
+        except ExtractionError:
+            pass          # restricted / stream-less — пробуем плеер с cookies
+
+    web = _from_web(ctx, owner_id, video_id, url)
+    if web:
+        return web
+
+    if item and item.get("content_restricted"):
+        why = item.get("content_restricted_message") or "video unavailable"
+        if has_auth_cookies(ctx):
+            raise ExtractionError(
+                f"VK restricted this video ({why}). The signed-in account has "
+                "no access to it — join the group or check who the video is "
+                "shared with.", SERVICE)
         raise ExtractionError(
-            f"VK returned no video: {e} (private, deleted, or login required)", SERVICE) from e
-    return _item_to_result(item, url)
+            f"VK restricted this video ({why}). Videos in closed groups need "
+            "account cookies — pass --cookies-from-browser (the account must "
+            "already have access).", SERVICE)
+    if item:
+        raise ExtractionError(
+            "no mp4 streams (possibly a live stream or external video)", SERVICE)
+    raise ExtractionError(
+        "VK returned no video (private, deleted, or login required)", SERVICE)
 
 
 def _resolve_owner(ctx, headers, screen: str):

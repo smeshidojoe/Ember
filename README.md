@@ -27,7 +27,7 @@ The only required dependency is `requests`. Python 3.9+.
 | Newgrounds | video, audio | anti-bot on some IPs |
 | Rutube | videos (HLS) | |
 | OK.ru | videos | may need a normal (non-datacenter) IP |
-| VK / VK Video | videos, clips | |
+| VK / VK Video | videos, clips | closed groups / private videos need cookies |
 | Facebook | videos, Reels | usually needs cookies |
 | Twitch | clips only | not VODs/streams |
 | Pornhub | videos | age wall bypassed automatically |

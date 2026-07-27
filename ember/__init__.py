@@ -32,7 +32,7 @@ from .router import (can_extract, extract, extract_highlights, extract_playlist,
                      extract_timeline, supported_services, supports_highlights,
                      supports_playlist, supports_timeline)
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 __all__ = [
     "extract",
