@@ -21,6 +21,23 @@ Extract direct media links + metadata from a post URL.
 - **returns** `Result`.
 - **raises** `UnsupportedUrlError` (use yt-dlp fallback), `NetworkError`, `ExtractionError`.
 
+### `extract_many(urls, *, workers=6, **same kwargs) -> list[tuple]`
+Extract many links in parallel. Returns `[(url, result, error), ...]` **in the
+same order as the input**: on success `error` is None, on failure `result` is
+None and `error` holds the `EmberError`. A single dead link never aborts the
+batch. On a mixed batch this is ~2–3× faster than a loop.
+
+```python
+for url, res, err in ember.extract_many(links):
+    if err:
+        print("skip", url, err.reason)     # see Reason below
+    else:
+        ember.download(res, "downloads/")
+```
+
+`workers` — parallel requests; keep it modest, services rate-limit. The CLI
+uses this automatically for `-a batch.txt` with several plain links.
+
 ### `extract_playlist(url, **same kwargs) -> Playlist`
 Extract a set/playlist (currently SoundCloud sets). Single link → `Playlist` with one entry.
 
@@ -166,7 +183,16 @@ ember.extract(url, cookies="cookies.txt")     # dict or path both work
 - `duration: float | None` — seconds, when the service reports it (video/audio services).
 - `timestamp: int | None` — unix seconds of publication, when reported.
 - `view_count: int | None`, `like_count: int | None` — when reported.
+- `is_preview: bool` — True when the service only exposed a **truncated**
+  version (SoundCloud Go+ hands out a 30s snippet of a full track anonymously).
+  `duration` then describes the snippet, not the work.
+- `full_duration: float | None` — length of the complete version, when known.
 - `subtitles: list[Subtitle]`.
+
+```python
+if result.is_preview:
+    print(f"only {result.duration}s of {result.full_duration}s available")
+```
 - `requires_merge: bool` (property) — True when `kind == "merge"`.
 - `to_dict() -> dict`.
 
@@ -218,6 +244,39 @@ Package version, e.g. `"0.8.1"`. Same value the CLI prints for `ember --version`
 
 `EmberError` (base) → `UnsupportedUrlError`, `NetworkError`, `ExtractionError`.
 Catch `EmberError` to cover them all (e.g. to fall back to yt-dlp).
+
+### `ExtractionError.reason -> str`
+Why it failed, in a form code can branch on — no need to parse the English
+message. Values live on `ember.Reason`:
+
+| `Reason.` | meaning | typical reaction |
+|---|---|---|
+| `NEEDS_AUTH` | cookies/login required | offer to sign in, pass cookies |
+| `RESTRICTED` | age wall, members-only, paid tier | tell the user access is missing |
+| `DELETED` | removed, private, never existed | drop the link |
+| `GEOBLOCKED` | blocked in this region | retry through a proxy |
+| `RATE_LIMITED` | HTTP 429 / throttled | back off and retry later |
+| `IP_BLOCKED` | datacenter/VPN address refused | retry from another IP |
+| `NO_MEDIA` | page loaded, holds nothing downloadable | drop the link |
+| `LIVE` | a live stream, not a finished recording | wait for the recording |
+| `FORMAT_CHANGED` | the service changed its response shape | report a bug |
+| `UNKNOWN` | could not tell | fall back to yt-dlp |
+
+```python
+try:
+    result = ember.extract(url)
+except ember.ExtractionError as e:
+    if e.needs_auth:                       # NEEDS_AUTH or RESTRICTED
+        result = ember.extract(url, cookies_from_browser="firefox")
+    elif e.reason == ember.Reason.RATE_LIMITED:
+        retry_later(url)
+    else:
+        fall_back_to_ytdlp(url)
+```
+
+`ExtractionError.needs_auth` is a shortcut for "would cookies plausibly help?".
+`reason` is always set: services declare it where they can tell, otherwise it is
+inferred from Ember's own message text, defaulting to `UNKNOWN`.
 
 ## Logging
 

@@ -81,6 +81,11 @@ class Result:
     view_count: Optional[int] = None
     like_count: Optional[int] = None
     subtitles: List[Subtitle] = field(default_factory=list)
+    # правда о полноте: некоторые сервисы отдают анонимно только огрызок
+    # (SoundCloud Go+ — 30 секунд вместо трека). duration тогда описывает
+    # именно огрызок, а full_duration — исходник.
+    is_preview: bool = False
+    full_duration: Optional[float] = None   # длительность полной версии
 
     @property
     def requires_merge(self) -> bool:
@@ -99,6 +104,8 @@ class Result:
             "timestamp": self.timestamp,
             "view_count": self.view_count,
             "like_count": self.like_count,
+            "is_preview": self.is_preview,
+            "full_duration": self.full_duration,
             "media": [m.to_dict() for m in self.media],
             "subtitles": [{"lang": s.lang, "url": s.url, "ext": s.ext}
                           for s in self.subtitles],

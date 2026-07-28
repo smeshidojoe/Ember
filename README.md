@@ -11,7 +11,7 @@ The only required dependency is `requests`. Python 3.9+.
 
 ## Supported services
 
-**18 services:**
+**19 services:**
 
 | Service | Extracts | Notes |
 |---|---|---|
@@ -20,7 +20,7 @@ The only required dependency is `requests`. Python 3.9+.
 | Instagram | posts, Reels, carousels, Stories, highlights | anonymously often preview-only; Stories/highlights need cookies |
 | Reddit | videos, GIFs, images, galleries | may be IP-blocked on VPN/datacenter |
 | Vimeo | videos (mp4/HLS) | |
-| SoundCloud | tracks, sets | premium tracks give a 30s preview anonymously |
+| SoundCloud | tracks, sets | Go+ catalogue gives a 30s snippet — flagged as `is_preview` |
 | Pinterest | video/image pins | |
 | Tumblr | video, audio, photos | |
 | Bluesky | video (HLS), images, GIFs | |
@@ -29,10 +29,11 @@ The only required dependency is `requests`. Python 3.9+.
 | OK.ru | videos | may need a normal (non-datacenter) IP |
 | VK / VK Video | videos, clips | closed groups / private videos need cookies |
 | Facebook | videos, Reels | usually needs cookies |
-| Twitch | clips only | not VODs/streams |
+| Twitch | clips and VODs | live streams not supported |
 | Pornhub | videos | age wall bypassed automatically |
 | XVideos | videos (HLS) | mirror domains supported |
 | RedGifs | videos | |
+| Imgur | images, GIFs, videos, albums | |
 
 > Reddit, Newgrounds and OK.ru block anonymous requests from datacenter/VPN addresses
 > (they work on a normal home IP); Instagram and Facebook may require cookies for full
@@ -128,6 +129,29 @@ pl = ember.extract_highlights("https://www.instagram.com/USER/",
 for entry in pl.entries:
     print(entry.title, len(entry.media))
     ember.download(entry, "downloads/")
+```
+
+Many links at once — extracted in parallel, order preserved, one dead link
+never kills the batch:
+
+```python
+for url, res, err in ember.extract_many(links):
+    if err:
+        print("skip", url, err.reason)      # "needs_auth", "deleted", ...
+    else:
+        ember.download(res, "downloads/")
+```
+
+React to a failure instead of parsing its message:
+
+```python
+try:
+    result = ember.extract(url)
+except ember.ExtractionError as e:
+    if e.needs_auth:                        # cookies would plausibly help
+        result = ember.extract(url, cookies_from_browser="firefox")
+    elif e.reason == ember.Reason.RATE_LIMITED:
+        retry_later(url)
 ```
 
 Long batches — don't redo finished files, and stay polite on the network:

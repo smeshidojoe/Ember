@@ -14,16 +14,16 @@ from .cookies import cookies_from_file as _cookies_from_file
 from .errors import EmberError, UnsupportedUrlError
 from .http import make_context
 from .models import Playlist, Result
-from .services import (bluesky, facebook, instagram, newgrounds, ok, pinterest,
-                       pornhub, redgifs, reddit, rutube, soundcloud, tiktok,
-                       tumblr, twitch, twitter, vimeo, vk, xvideos)
+from .services import (bluesky, facebook, imgur, instagram, newgrounds, ok,
+                       pinterest, pornhub, redgifs, reddit, rutube, soundcloud,
+                       tiktok, tumblr, twitch, twitter, vimeo, vk, xvideos)
 
 log = logging.getLogger(__name__)
 
 _SERVICES = [
     tiktok, twitter, instagram, reddit,
     vimeo, soundcloud, pinterest, tumblr, bluesky, newgrounds,
-    rutube, ok, vk, facebook, twitch, pornhub, xvideos, redgifs,
+    rutube, ok, vk, facebook, twitch, pornhub, xvideos, redgifs, imgur,
 ]
 
 
@@ -126,6 +126,59 @@ def extract(
     ctx = _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,
                      browser_profile, service.SERVICE)
     return service.extract(ctx, url)
+
+
+def extract_many(
+    urls,
+    *,
+    workers: int = 6,
+    timeout: float = 15.0,
+    proxies: Optional[dict] = None,
+    cookies: Optional[dict] = None,
+    cookies_from_browser: Optional[str] = None,
+    browser_profile: Optional[str] = None,
+    session: Optional[requests.Session] = None,
+) -> List[tuple]:
+    """Extract many links at once, in parallel.
+
+    Returns `[(url, result, error), ...]` in the SAME order as the input: on
+    success `error` is None, on failure `result` is None and `error` holds the
+    EmberError. Nothing is raised for a single bad link — a long batch should
+    not die because one post was deleted.
+
+    Args:
+        urls: links to extract (any iterable).
+        workers: parallel requests. Keep it modest: services rate-limit, and
+            all of them share one cookie jar per call.
+        everything else: as in extract().
+
+    ```python
+    for url, res, err in ember.extract_many(links):
+        if err:
+            print("skip", url, err.reason)
+        else:
+            ember.download(res, "downloads/")
+    ```
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    urls = [u.strip() for u in urls]
+    if not urls:
+        return []
+
+    def one(url: str):
+        try:
+            return (url, extract(
+                url, timeout=timeout, proxies=proxies, cookies=cookies,
+                cookies_from_browser=cookies_from_browser,
+                browser_profile=browser_profile, session=session), None)
+        except EmberError as e:
+            log.debug("extract_many: %s failed: %s", url, e)
+            return (url, None, e)
+
+    # порядок входа сохраняем: executor.map отдаёт результаты по порядку
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(urls)))) as pool:
+        return list(pool.map(one, urls))
 
 
 def supports_playlist(url: str) -> bool:

@@ -99,12 +99,20 @@ def _track_result(ctx: Context, track: dict, url: str = "") -> Result:
     title = track.get("title")
     author = (track.get("user") or {}).get("username")
     hint = safe_filename(f"soundcloud_{author or ''}_{title or track.get('id')}")
+
+    # Go+ (премиальный каталог лейблов): анонимно отдаётся только 30-секундный
+    # огрызок. policy=SNIP, и duration описывает именно его, а не трек.
+    duration = (track.get("duration") or 0) / 1000 or None
+    full = (track.get("full_duration") or 0) / 1000 or None
+    is_preview = bool(track.get("snipped") or track.get("policy") == "SNIP"
+                      or (full and duration and full - duration > 1))
+
     return Result(
         service=SERVICE, kind="single",
         media=[Media(kind="audio", url=file_url, ext="m3u8" if is_hls else "mp3")],
         title=title, author=author, source_url=url or track.get("permalink_url", ""),
         filename_hint=hint, thumbnail=track.get("artwork_url"),
-        duration=(track.get("duration") or 0) / 1000 or None,
+        duration=duration, full_duration=full, is_preview=is_preview,
         timestamp=to_timestamp(track.get("created_at")),
         view_count=track.get("playback_count"), like_count=track.get("likes_count"))
 

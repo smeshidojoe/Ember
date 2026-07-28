@@ -22,20 +22,22 @@ from .errors import (
     EmberError,
     ExtractionError,
     NetworkError,
+    Reason,
     UnsupportedUrlError,
 )
 from .cookies import cookies_from_browser, cookies_from_file
 from .download import (DownloadProgress, RateLimiter, available_qualities,
                        download, download_media, ffmpeg_available, probe_size)
 from .models import Media, MediaVariant, Playlist, Result, Subtitle
-from .router import (can_extract, extract, extract_highlights, extract_playlist,
-                     extract_timeline, supported_services, supports_highlights,
-                     supports_playlist, supports_timeline)
+from .router import (can_extract, extract, extract_highlights, extract_many,
+                     extract_playlist, extract_timeline, supported_services,
+                     supports_highlights, supports_playlist, supports_timeline)
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 __all__ = [
     "extract",
+    "extract_many",
     "extract_playlist",
     "extract_timeline",
     "extract_highlights",
@@ -62,5 +64,6 @@ __all__ = [
     "UnsupportedUrlError",
     "NetworkError",
     "ExtractionError",
+    "Reason",
     "__version__",
 ]

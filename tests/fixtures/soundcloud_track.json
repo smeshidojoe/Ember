@@ -1,0 +1,210 @@
+{
+ "artwork_url": "https://i1.sndcdn.com/artworks-b9GcqYNMe09u-0-large.jpg",
+ "caption": null,
+ "commentable": true,
+ "comment_count": 15147,
+ "created_at": "2016-03-30T15:24:40Z",
+ "description": null,
+ "downloadable": false,
+ "download_count": 0,
+ "duration": 290366,
+ "full_duration": 290351,
+ "embeddable_by": "all",
+ "genre": "Hip Hop",
+ "has_downloads_left": false,
+ "id": 256257257,
+ "kind": "track",
+ "label_name": "Eminem Catalog PS",
+ "last_modified": "2026-02-15T23:27:22Z",
+ "license": "all-rights-reserved",
+ "likes_count": 707959,
+ "permalink": "without-me-album-version",
+ "permalink_url": "https://soundcloud.com/eminemofficial/without-me-album-version",
+ "playback_count": 43640156,
+ "public": true,
+ "publisher_metadata": {
+  "id": 256257257,
+  "urn": "soundcloud:tracks:256257257",
+  "artist": "Eminem",
+  "album_title": "The Eminem Show",
+  "contains_music": true,
+  "upc_or_ean": "00606949329020",
+  "isrc": "USIR10211038",
+  "explicit": true,
+  "p_line": "℗ 2002 Aftermath Records",
+  "p_line_for_display": "℗ 2002 Aftermath Records",
+  "c_line": "© 2002 Aftermath Records",
+  "c_line_for_display": "© 2002 Aftermath Records",
+  "release_title": "Without Me"
+ },
+ "purchase_title": null,
+ "purchase_url": null,
+ "release_date": "2005-11-21T00:00:00Z",
+ "reposts_count": 10956,
+ "secret_token": null,
+ "sharing": "public",
+ "state": "finished",
+ "streamable": true,
+ "tag_list": "Pop",
+ "title": "Without Me",
+ "uri": "https://api.soundcloud.com/tracks/soundcloud%3Atracks%3A256257257",
+ "urn": "soundcloud:tracks:256257257",
+ "user_id": 214363415,
+ "visuals": null,
+ "waveform_url": "https://wave.sndcdn.com/nQm2Ny1HS1Yc_m.json",
+ "display_date": "2005-11-21T00:00:00Z",
+ "media": {
+  "transcodings": [
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/9f93e701-d388-450f-9945-bfed3a03b487/stream/cbc-encrypted-hls",
+    "preset": "aac_160k",
+    "duration": 290366,
+    "snipped": false,
+    "format": {
+     "protocol": "cbc-encrypted-hls",
+     "mime_type": "audio/mp4; codecs=\"mp4a.40.2\""
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": false
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/9f93e701-d388-450f-9945-bfed3a03b487/stream/ctr-encrypted-hls",
+    "preset": "aac_160k",
+    "duration": 290366,
+    "snipped": false,
+    "format": {
+     "protocol": "ctr-encrypted-hls",
+     "mime_type": "audio/mp4; codecs=\"mp4a.40.2\""
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": false
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/e9cc135d-d34f-4023-83f5-368c218d9789/stream/cbc-encrypted-hls",
+    "preset": "aac_96k",
+    "duration": 290366,
+    "snipped": false,
+    "format": {
+     "protocol": "cbc-encrypted-hls",
+     "mime_type": "audio/mp4; codecs=\"mp4a.40.2\""
+    },
+    "quality": "lq",
+    "is_legacy_transcoding": false
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/e9cc135d-d34f-4023-83f5-368c218d9789/stream/ctr-encrypted-hls",
+    "preset": "aac_96k",
+    "duration": 290366,
+    "snipped": false,
+    "format": {
+     "protocol": "ctr-encrypted-hls",
+     "mime_type": "audio/mp4; codecs=\"mp4a.40.2\""
+    },
+    "quality": "lq",
+    "is_legacy_transcoding": false
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/70edc76f-163f-4da0-b64d-0d4c4f35f864/stream/cbc-encrypted-hls",
+    "preset": "abr_sq",
+    "duration": 290366,
+    "snipped": false,
+    "format": {
+     "protocol": "cbc-encrypted-hls",
+     "mime_type": "audio/mpegurl"
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": false
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/70edc76f-163f-4da0-b64d-0d4c4f35f864/stream/ctr-encrypted-hls",
+    "preset": "abr_sq",
+    "duration": 290366,
+    "snipped": false,
+    "format": {
+     "protocol": "ctr-encrypted-hls",
+     "mime_type": "audio/mpegurl"
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": false
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256257257/2695089f-29bf-4689-9140-9e73b285f434/stream/hls",
+    "preset": "mp3_1_0",
+    "duration": 290351,
+    "snipped": false,
+    "format": {
+     "protocol": "hls",
+     "mime_type": "audio/mpeg"
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": true
+   }
+  ]
+ },
+ "station_urn": "soundcloud:system-playlists:track-stations:256257257",
+ "station_permalink": "track-stations:256257257",
+ "track_authorization": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJnZW8iOiJOTCIsInN1YiI6IiIsInJpZCI6ImYwNDJhOThkLTg0N2YtNGU4MC05MThmLThhOGUzM2IyZTVmNSIsImlhdCI6MTc4NTIyMDY2NH0.S8opdCYLtO7ZMPsmqVAusddJlt2pHOQ1BUlP8Oaflfw",
+ "monetization_model": "AD_SUPPORTED",
+ "policy": "MONETIZE",
+ "user": {
+  "avatar_url": "https://i1.sndcdn.com/avatars-dCMLZFMBzh26lvGW-8z9nxw-large.jpg",
+  "city": null,
+  "comments_count": 0,
+  "country_code": null,
+  "created_at": null,
+  "creator_subscriptions": [
+   {
+    "product": {
+     "id": "creator-pro-unlimited"
+    }
+   }
+  ],
+  "creator_subscription": {
+   "product": {
+    "id": "creator-pro-unlimited"
+   }
+  },
+  "description": null,
+  "followers_count": 2343426,
+  "followings_count": 1,
+  "first_name": "",
+  "full_name": "",
+  "groups_count": 0,
+  "id": 214363415,
+  "kind": "user",
+  "last_modified": "2025-09-04T19:19:54Z",
+  "last_name": "",
+  "likes_count": 0,
+  "playlist_likes_count": 0,
+  "permalink": "eminemofficial",
+  "permalink_url": "https://soundcloud.com/eminemofficial",
+  "playlist_count": 90,
+  "reposts_count": null,
+  "track_count": 574,
+  "uri": "https://api.soundcloud.com/users/soundcloud%3Ausers%3A214363415",
+  "urn": "soundcloud:users:214363415",
+  "username": "Eminem",
+  "verified": true,
+  "visuals": {
+   "urn": "soundcloud:users:214363415",
+   "enabled": true,
+   "visuals": [
+    {
+     "urn": "soundcloud:visuals:249257118",
+     "entry_time": 0,
+     "visual_url": "https://i1.sndcdn.com/visuals-000214363415-Lvlv1k-original.jpg"
+    }
+   ],
+   "tracking": null
+  },
+  "badges": {
+   "pro": false,
+   "creator_mid_tier": false,
+   "pro_unlimited": true,
+   "verified": true
+  },
+  "station_urn": "soundcloud:system-playlists:artist-stations:214363415",
+  "station_permalink": "artist-stations:214363415",
+  "date_of_birth": null
+ }
+}

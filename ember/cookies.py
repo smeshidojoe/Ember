@@ -40,6 +40,7 @@ _DOMAIN_HINTS = {
     "pornhub": ["pornhub.com"],
     "xvideos": ["xvideos.com"],
     "redgifs": ["redgifs.com"],
+    "imgur": ["imgur.com"],
 }
 
 

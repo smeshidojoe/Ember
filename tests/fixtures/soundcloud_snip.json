@@ -1,0 +1,150 @@
+{
+ "artwork_url": "https://i1.sndcdn.com/artworks-yoNBcCuCwl2N-0-large.jpg",
+ "caption": null,
+ "commentable": true,
+ "comment_count": 127,
+ "created_at": "2016-03-30T15:23:39Z",
+ "description": null,
+ "downloadable": false,
+ "download_count": 0,
+ "duration": 30000,
+ "full_duration": 290456,
+ "embeddable_by": "all",
+ "genre": "Hip Hop",
+ "has_downloads_left": false,
+ "id": 256256919,
+ "kind": "track",
+ "label_name": "Eminem Catalog PS",
+ "last_modified": "2026-06-26T08:47:41Z",
+ "license": "all-rights-reserved",
+ "likes_count": 45340,
+ "permalink": "the-way-i-am-album-version",
+ "permalink_url": "https://soundcloud.com/eminemofficial/the-way-i-am-album-version",
+ "playback_count": 1590458,
+ "public": true,
+ "publisher_metadata": {
+  "id": 256256919,
+  "urn": "soundcloud:tracks:256256919",
+  "artist": "Eminem",
+  "album_title": "The Marshall Mathers LP",
+  "contains_music": true,
+  "upc_or_ean": "00606949062927",
+  "isrc": "USIR10000589",
+  "explicit": true,
+  "p_line": "℗ 2000 Aftermath Entertainment/Interscope Records",
+  "p_line_for_display": "℗ 2000 Aftermath Entertainment/Interscope Records",
+  "c_line": "© 2000 Interscope Records",
+  "c_line_for_display": "© 2000 Interscope Records",
+  "release_title": "The Way I Am"
+ },
+ "purchase_title": null,
+ "purchase_url": null,
+ "release_date": "2000-05-26T00:00:00Z",
+ "reposts_count": 413,
+ "secret_token": null,
+ "sharing": "public",
+ "state": "finished",
+ "streamable": true,
+ "tag_list": "Pop",
+ "title": "The Way I Am",
+ "uri": "https://api.soundcloud.com/tracks/soundcloud%3Atracks%3A256256919",
+ "urn": "soundcloud:tracks:256256919",
+ "user_id": 214363415,
+ "visuals": null,
+ "waveform_url": "https://wave.sndcdn.com/WpSGca5tdyjB_m.json",
+ "display_date": "2000-05-26T00:00:00Z",
+ "media": {
+  "transcodings": [
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256256919/97c90939-1afd-46d1-b73e-da69fcbdfe63/preview/hls",
+    "preset": "mp3_1_0",
+    "duration": 30000,
+    "snipped": true,
+    "format": {
+     "protocol": "hls",
+     "mime_type": "audio/mpeg"
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": true
+   },
+   {
+    "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:256256919/97c90939-1afd-46d1-b73e-da69fcbdfe63/preview/progressive",
+    "preset": "mp3_1_0",
+    "duration": 30000,
+    "snipped": true,
+    "format": {
+     "protocol": "progressive",
+     "mime_type": "audio/mpeg"
+    },
+    "quality": "sq",
+    "is_legacy_transcoding": true
+   }
+  ]
+ },
+ "station_urn": "soundcloud:system-playlists:track-stations:256256919",
+ "station_permalink": "track-stations:256256919",
+ "track_authorization": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJnZW8iOiJOTCIsInN1YiI6IiIsInJpZCI6IjZmOWFiYmRkLWNjODQtNGEwMC1hODgxLTFhNTZiOTQyMGRjMyIsImlhdCI6MTc4NTIyMDY2NX0.KsTWFWRUX7dHjDKfWGJS-Ev4olaDDHxj7xRW9RPFgMU",
+ "monetization_model": "SUB_HIGH_TIER",
+ "policy": "SNIP",
+ "user": {
+  "avatar_url": "https://i1.sndcdn.com/avatars-dCMLZFMBzh26lvGW-8z9nxw-large.jpg",
+  "city": null,
+  "comments_count": 0,
+  "country_code": null,
+  "created_at": null,
+  "creator_subscriptions": [
+   {
+    "product": {
+     "id": "creator-pro-unlimited"
+    }
+   }
+  ],
+  "creator_subscription": {
+   "product": {
+    "id": "creator-pro-unlimited"
+   }
+  },
+  "description": null,
+  "followers_count": 2343426,
+  "followings_count": 1,
+  "first_name": "",
+  "full_name": "",
+  "groups_count": 0,
+  "id": 214363415,
+  "kind": "user",
+  "last_modified": "2025-09-04T19:19:54Z",
+  "last_name": "",
+  "likes_count": 0,
+  "playlist_likes_count": 0,
+  "permalink": "eminemofficial",
+  "permalink_url": "https://soundcloud.com/eminemofficial",
+  "playlist_count": 90,
+  "reposts_count": null,
+  "track_count": 574,
+  "uri": "https://api.soundcloud.com/users/soundcloud%3Ausers%3A214363415",
+  "urn": "soundcloud:users:214363415",
+  "username": "Eminem",
+  "verified": true,
+  "visuals": {
+   "urn": "soundcloud:users:214363415",
+   "enabled": true,
+   "visuals": [
+    {
+     "urn": "soundcloud:visuals:249257118",
+     "entry_time": 0,
+     "visual_url": "https://i1.sndcdn.com/visuals-000214363415-Lvlv1k-original.jpg"
+    }
+   ],
+   "tracking": null
+  },
+  "badges": {
+   "pro": false,
+   "creator_mid_tier": false,
+   "pro_unlimited": true,
+   "verified": true
+  },
+  "station_urn": "soundcloud:system-playlists:artist-stations:214363415",
+  "station_permalink": "artist-stations:214363415",
+  "date_of_birth": null
+ }
+}

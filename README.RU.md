@@ -11,7 +11,7 @@
 
 ## Поддерживаемые сервисы
 
-**18 сервисов:**
+**19 сервисов:**
 
 | Сервис | Что достаёт | Примечания |
 |---|---|---|
@@ -20,7 +20,7 @@
 | Instagram | посты, Reels, карусели, истории, highlights | анонимно часто только превью; истории/highlights требуют cookies |
 | Reddit | видео, гифки, картинки, галереи | возможен блок по IP на VPN/датацентрах |
 | Vimeo | видео (mp4/HLS) | |
-| SoundCloud | треки, наборы (sets) | премиум-треки анонимно отдают 30-сек превью |
+| SoundCloud | треки, наборы (sets) | каталог Go+ отдаёт 30-сек огрызок — помечается `is_preview` |
 | Pinterest | видео/картинки пинов | |
 | Tumblr | видео, аудио, фото | |
 | Bluesky | видео (HLS), картинки, гифки | |
@@ -29,10 +29,11 @@
 | OK.ru | видео | может требоваться обычный (не датацентр) IP |
 | VK / VK Видео | видео, клипы | закрытые группы / приватные видео — нужны cookies |
 | Facebook | видео, Reels | обычно нужны cookies |
-| Twitch | клипы (clips) | не VOD/трансляции |
+| Twitch | клипы и VOD-записи | живые трансляции не поддерживаются |
 | Pornhub | видео | возрастной баннер обходится автоматически |
 | XVideos | видео (HLS) | зеркала доменов поддерживаются |
 | RedGifs | видео | |
+| Imgur | картинки, GIF, видео, альбомы | |
 
 > Reddit, Newgrounds и OK.ru блокируют анонимные запросы с датацентровых/VPN-адресов
 > (на обычном домашнем IP работают); Instagram и Facebook для полного доступа могут
@@ -129,6 +130,29 @@ pl = ember.extract_highlights("https://www.instagram.com/USER/",
 for entry in pl.entries:
     print(entry.title, len(entry.media))
     ember.download(entry, "downloads/")
+```
+
+Много ссылок сразу — разбираются параллельно, порядок сохраняется, одна битая
+ссылка не роняет всю пачку:
+
+```python
+for url, res, err in ember.extract_many(links):
+    if err:
+        print("пропуск", url, err.reason)   # "needs_auth", "deleted", ...
+    else:
+        ember.download(res, "downloads/")
+```
+
+Реакция на ошибку без разбора текста сообщения:
+
+```python
+try:
+    result = ember.extract(url)
+except ember.ExtractionError as e:
+    if e.needs_auth:                        # cookies, скорее всего, помогут
+        result = ember.extract(url, cookies_from_browser="firefox")
+    elif e.reason == ember.Reason.RATE_LIMITED:
+        retry_later(url)
 ```
 
 Длинные батчи — не переделывать готовое и не забивать канал:

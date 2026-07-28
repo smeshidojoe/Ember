@@ -28,7 +28,7 @@ from typing import Callable, List, Optional
 from . import hls
 from ._browser_cookies import _pkcs7_unpad
 from ._browser_cookies import aes_cbc_decrypt as _aes_cbc_decrypt
-from .errors import EmberError, ExtractionError, NetworkError
+from .errors import EmberError, ExtractionError, NetworkError, Reason
 from .http import Context, make_context
 from .models import Media, Result, safe_filename
 
@@ -182,7 +182,8 @@ def _assemble_hls(ctx: Context, playlist_url: str, headers: Optional[dict],
     text = ctx.get(playlist_url, headers=headers or None).text
     media = hls.parse_media(text, playlist_url)
     if media.is_live:
-        raise ExtractionError("live HLS streams are not supported", "hls")
+        raise ExtractionError("live HLS streams are not supported", "hls",
+                              reason=Reason.LIVE)
     if not media.segments:
         raise ExtractionError("HLS playlist has no segments", "hls")
     if prog is not None:

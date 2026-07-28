@@ -1,0 +1,36 @@
+{
+ "data": {
+  "clip": {
+   "title": "VALORANT REVEAL (PROJECT A)",
+   "durationSeconds": 46,
+   "thumbnailURL": "https://static-cdn.jtvnw.net/twitch-video-assets/twitch-vap-video-assets-prod-us-west-2/d96555f2-9ccf-4402-8ea2-7468fe02f26e/landscape/thumb/thumb-0000000000-1920x1080.jpg",
+   "viewCount": 485293,
+   "createdAt": "2019-10-16T01:36:17Z",
+   "broadcaster": {
+    "displayName": "Riot Games"
+   },
+   "videoQualities": [
+    {
+     "quality": "1080",
+     "sourceURL": "https://d1ndex63qxojbr.cloudfront.net/nauth/d96555f2-9ccf-4402-8ea2-7468fe02f26e/landscape/avc/1080/index.mp4"
+    },
+    {
+     "quality": "720",
+     "sourceURL": "https://d1ndex63qxojbr.cloudfront.net/nauth/d96555f2-9ccf-4402-8ea2-7468fe02f26e/landscape/avc/720/index.mp4"
+    },
+    {
+     "quality": "480",
+     "sourceURL": "https://d1ndex63qxojbr.cloudfront.net/nauth/d96555f2-9ccf-4402-8ea2-7468fe02f26e/landscape/avc/480/index.mp4"
+    },
+    {
+     "quality": "360",
+     "sourceURL": "https://d1ndex63qxojbr.cloudfront.net/nauth/d96555f2-9ccf-4402-8ea2-7468fe02f26e/landscape/avc/360/index.mp4"
+    }
+   ]
+  }
+ },
+ "extensions": {
+  "durationMilliseconds": 50,
+  "requestID": "01KYKQ34VZ7GPBN4352NNXKTRM"
+ }
+}

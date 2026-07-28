@@ -15,7 +15,7 @@ import time
 
 from . import (DownloadProgress, EmberError, __version__, available_qualities,
                can_extract, cookies_from_file, download, extract,
-               extract_highlights, extract_playlist, extract_timeline,
+               extract_highlights, extract_many, extract_playlist, extract_timeline,
                probe_size, supported_services, supports_playlist,
                supports_timeline)
 from .http import make_context
@@ -139,7 +139,13 @@ def _print_result(result, size=False, ctx=None) -> None:
     print(f"author:   {result.author or '-'}")
     print(f"title:    {result.title or '-'}")
     if result.duration:
-        print(f"duration: {int(result.duration // 60)}:{int(result.duration % 60):02d}")
+        def _mmss(sec):
+            return f"{int(sec // 60)}:{int(sec % 60):02d}"
+        print(f"duration: {_mmss(result.duration)}")
+        if result.is_preview:
+            full = f" of {_mmss(result.full_duration)}" if result.full_duration else ""
+            print(f"PREVIEW:  only a {_mmss(result.duration)} snippet{full} is "
+                  "available — the full track needs a paid subscription")
     if result.timestamp:
         from datetime import datetime, timezone
         print(f"date:     {datetime.fromtimestamp(result.timestamp, timezone.utc):%Y-%m-%d}")
@@ -393,6 +399,17 @@ def main() -> int:
     cb = _make_progress_printer()
     rc = 0
 
+    # Пачка обычных ссылок: метаданные тянем параллельно — по очереди это
+    # самая медленная часть батча. Ленты/плейлисты идут своим путём.
+    prefetched = {}
+    if len(urls) > 1 and not (args.highlights or args.timeline or args.playlist):
+        plain = [u for u in urls
+                 if can_extract(u) and not supports_playlist(u)]
+        if len(plain) > 1:
+            for u, res, err in extract_many(plain, workers=min(6, len(plain)),
+                                            **common):
+                prefetched[u] = (res, err)
+
     for url in urls:
         # профиль/канал -> лента; авто, если ссылка не пост
         is_timeline = (not args.highlights
@@ -413,6 +430,11 @@ def main() -> int:
                 playlist = extract_playlist(url, **common)
                 results = playlist.entries
                 print(f"playlist: {playlist.title or '-'} ({len(results)} items)")
+            elif url in prefetched:
+                res, err = prefetched[url]
+                if err:
+                    raise err
+                results = [res]
             else:
                 results = [extract(url, **common)]
         except EmberError as e:

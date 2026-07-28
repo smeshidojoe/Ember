@@ -13,7 +13,7 @@ import uuid
 from typing import Optional
 
 from .. import cache
-from ..errors import ExtractionError
+from ..errors import ExtractionError, Reason
 from ..http import DEFAULT_UA, Context
 from ..models import Media, MediaVariant, Result, safe_filename
 
@@ -100,7 +100,8 @@ def _item_to_result(item: dict, url: str = "") -> Result:
                 for res in _RESOLUTIONS if files.get(f"mp4_{res}")]
     if not variants:
         raise ExtractionError(
-            "no mp4 streams (possibly a live stream or external video)", SERVICE)
+            "no mp4 streams (possibly a live stream or external video)", SERVICE,
+            reason=Reason.NO_MEDIA)
     best = variants[0]
     owner_id, video_id = item.get("owner_id"), item.get("id")
     images = item.get("image") or []
@@ -211,19 +212,22 @@ def extract(ctx: Context, url: str) -> Result:
     if item and item.get("content_restricted"):
         why = item.get("content_restricted_message") or "video unavailable"
         if has_auth_cookies(ctx):
+            # уже авторизованы — доступа просто нет, cookies не помогут
             raise ExtractionError(
                 f"VK restricted this video ({why}). The signed-in account has "
                 "no access to it — join the group or check who the video is "
-                "shared with.", SERVICE)
+                "shared with.", SERVICE, reason=Reason.RESTRICTED)
         raise ExtractionError(
             f"VK restricted this video ({why}). Videos in closed groups need "
             "account cookies — pass --cookies-from-browser (the account must "
-            "already have access).", SERVICE)
+            "already have access).", SERVICE, reason=Reason.NEEDS_AUTH)
     if item:
         raise ExtractionError(
-            "no mp4 streams (possibly a live stream or external video)", SERVICE)
+            "no mp4 streams (possibly a live stream or external video)", SERVICE,
+            reason=Reason.NO_MEDIA)
     raise ExtractionError(
-        "VK returned no video (private, deleted, or login required)", SERVICE)
+        "VK returned no video (private, deleted, or login required)", SERVICE,
+        reason=Reason.DELETED)
 
 
 def _resolve_owner(ctx, headers, screen: str):
