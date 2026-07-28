@@ -23,7 +23,7 @@ The only required dependency is `requests`. Python 3.9+.
 | SoundCloud | tracks, sets | Go+ catalogue gives a 30s snippet — flagged as `is_preview` |
 | Pinterest | video/image pins | |
 | Tumblr | video, audio, photos | |
-| Bluesky | video (HLS), images, GIFs | |
+| Bluesky | video (HLS), images, GIFs | images come as the author's original upload, not the CDN re-encode |
 | Newgrounds | video, audio | anti-bot on some IPs |
 | Rutube | videos (HLS) | |
 | OK.ru | videos | may need a normal (non-datacenter) IP |
@@ -258,6 +258,14 @@ remuxed into `.mp4`).
 
 ## Limitations
 
+- **Use a throwaway account for cookies, not your main one.** Services rate-limit and
+  ban per account, and automated extraction looks like automation. Instagram is the
+  strictest: after enough requests it answers `feedback_required` ("we limit how often
+  you can do certain things"), and from then on *every* path fails for that account —
+  Ember degrades to the post's cover image and marks it `is_preview=True`. The limit
+  is tied to the account, so a second browser profile with a separate login keeps
+  working while the throttled one recovers (usually within a day). A repeatedly
+  throttled account can end up restricted for good, so don't spend your real one.
 - **Instagram** — anonymously often returns only a preview; pass cookies for full quality.
 - **Reddit, Newgrounds, OK.ru** — block anonymous requests from datacenter/VPN IPs; they
   work on a normal home IP. `proxies=` / a different IP helps.

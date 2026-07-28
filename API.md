@@ -163,6 +163,23 @@ falling back to yt-dlp / browser_cookie3.
 - **raises** `EmberError` — unknown service; browser running and locking its
   cookie DB; unsupported combo with no backend; App-Bound Encryption.
 
+> **Sign a throwaway account into that browser profile, not your main one.**
+> Rate limits and bans are per account, and automated extraction looks like
+> automation. Instagram is strictest: past a certain request volume it returns
+> `feedback_required`, after which *every* path fails for that account and
+> Ember can only return the post's cover image (flagged `is_preview=True`).
+> The limit follows the account, not the host or the IP — a second browser
+> profile with its own login keeps working while the throttled one recovers,
+> usually within a day. Accounts throttled repeatedly can be restricted
+> permanently, so keep a dedicated one for this.
+
+Pointing `browser_profile` at a separate profile is the easy way to keep the
+scraping login apart from your own:
+
+```python
+ember.extract(url, cookies_from_browser="firefox", browser_profile="scraper")
+```
+
 ### `cookies_from_file(path) -> dict`
 Parse a Netscape-format `cookies.txt` (yt-dlp / browser-extension export).
 `extract()` also accepts the path directly:

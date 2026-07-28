@@ -138,14 +138,22 @@ def _print_result(result, size=False, ctx=None) -> None:
     print(f"type:     {result.kind}")
     print(f"author:   {result.author or '-'}")
     print(f"title:    {result.title or '-'}")
+    def _mmss(sec):
+        return f"{int(sec // 60)}:{int(sec % 60):02d}"
+
     if result.duration:
-        def _mmss(sec):
-            return f"{int(sec // 60)}:{int(sec % 60):02d}"
         print(f"duration: {_mmss(result.duration)}")
-        if result.is_preview:
-            full = f" of {_mmss(result.full_duration)}" if result.full_duration else ""
-            print(f"PREVIEW:  only a {_mmss(result.duration)} snippet{full} is "
-                  "available — the full track needs a paid subscription")
+    # предупреждение не должно зависеть от наличия длительности:
+    # у обложки поста её нет вовсе
+    if result.is_preview:
+        if result.full_duration and result.duration:
+            print(f"PREVIEW:  only a {_mmss(result.duration)} snippet of "
+                  f"{_mmss(result.full_duration)} is available — the full "
+                  "version needs a paid subscription")
+        else:
+            print("PREVIEW:  this is only the post's cover image, not the "
+                  "real media — the service refused the full post "
+                  "(rate limit or missing cookies)")
     if result.timestamp:
         from datetime import datetime, timezone
         print(f"date:     {datetime.fromtimestamp(result.timestamp, timezone.utc):%Y-%m-%d}")

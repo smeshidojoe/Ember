@@ -1,7 +1,13 @@
 """Bluesky: video (HLS) and images from posts.
 
 Method — the public XRPC endpoint getPostThread, no auth needed.
-Video is served as an HLS playlist, images as direct CDN links.
+Video is served as an HLS playlist.
+
+Images: the `fullsize` link the API hands out points at the CDN, which
+re-encodes to WebP — same pixel size, but measured 1.3x–12x smaller than the
+file the author uploaded. The post record also carries the blob reference of
+that original, so we fetch it through com.atproto.sync.getBlob instead and
+hand back the untouched upload.
 """
 
 from __future__ import annotations
@@ -19,6 +25,29 @@ PATTERNS = [
 ]
 
 _API = "https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread"
+_BLOB_API = "https://bsky.social/xrpc/com.atproto.sync.getBlob"
+
+
+def _record_images(record: dict) -> list:
+    """Image entries of the raw record — these hold the original blob refs."""
+    embed = record.get("embed") or {}
+    if "recordWithMedia" in embed.get("$type", ""):     # цитата + картинки
+        embed = embed.get("media") or {}
+    return embed.get("images") or []
+
+
+def _original(did: str, entry: dict):
+    """(url, ext) исходника из записи, либо None если ссылки на блоб нет."""
+    blob = entry.get("image") or {}
+    cid = (blob.get("ref") or {}).get("$link")
+    if not (did and cid):
+        return None
+    # mimeType сообщает настоящий формат: CDN-ссылка всегда webp, а загружали
+    # чаще jpeg или png, и расширение файла должно совпадать с содержимым
+    mime = blob.get("mimeType") or "image/jpeg"
+    ext = mime.rsplit("/", 1)[-1].lower()
+    ext = {"jpeg": "jpg"}.get(ext, ext)
+    return f"{_BLOB_API}?did={did}&cid={cid}", ext
 
 
 def extract(ctx: Context, url: str) -> Result:
@@ -61,11 +90,18 @@ def extract(ctx: Context, url: str) -> Result:
             return result("single", [Media(kind="video", url=playlist, ext="m3u8")],
                           thumbnail=embed.get("thumbnail"))
 
-    # картинки
+    # картинки: берём исходник из записи, CDN-ссылка — запасной вариант
     images = embed.get("images") or []
     if images:
-        media = [Media(kind="photo", url=img["fullsize"], ext="jpg")
-                 for img in images if img.get("fullsize")]
+        did = (post.get("author") or {}).get("did")
+        originals = _record_images(record)
+        media = []
+        for i, img in enumerate(images):
+            orig = _original(did, originals[i]) if i < len(originals) else None
+            if orig:
+                media.append(Media(kind="photo", url=orig[0], ext=orig[1]))
+            elif img.get("fullsize"):
+                media.append(Media(kind="photo", url=img["fullsize"], ext="jpg"))
         if media:
             return result("gallery" if len(media) > 1 else "single", media)
 

@@ -1,25 +1,34 @@
-"""Instagram: posts, Reels, carousels.
+"""Instagram: posts, Reels, carousels, stories, highlights.
 
 The flakiest service — Instagram aggressively blocks anonymous access.
-Methods, in order (like cobalt):
+Methods, in order:
 1. GraphQL query PolarisPostActionLoadPostQueryQuery (no auth);
-2. embed page /p/<code>/embed/captioned/;
-3. mobile oembed API — returns only a preview image and metadata, but
-   works even where the first two are closed.
+2. mobile media/info, retried on the second api host if the first is
+   unreachable (both hosts share the same account-level rate limit, so this
+   only covers a host being down or blocked by name, not throttling);
+3. mobile oembed API — only the post's cover image, so results from it are
+   marked `is_preview=True` rather than passed off as the real media.
 
 Where everything is closed, full quality comes from passing logged-in
 account cookies: ember.extract(url, cookies={"sessionid": ...}).
+
+Note: Instagram throttles per account. Heavy automated use earns
+`feedback_required` ("we limit how often you can do certain things"), after
+which even the good paths fail — use a dedicated account, not your main one.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Optional
 
 from ..errors import ExtractionError
 from ..http import Context
 from ..models import Media, Result, safe_filename
+
+log = logging.getLogger(__name__)
 
 SERVICE = "instagram"
 
@@ -48,10 +57,27 @@ _PROFILE_ID_ALT_RE = re.compile(r'"user_id":"(\d+)"')
 _HL_QUERY_HASH = "d4d88dc1500312af6f937f7b804c68c3"
 
 _IG_APP_ID = "936619743392459"
+
+# один и тот же API на двух именах — см. _media_info
+_API_HOSTS = ("https://i.instagram.com", "https://www.instagram.com")
 _GRAPHQL_DOC_ID = "8845758582119845"  # PolarisPostActionLoadPostQueryQuery
+
+# Instagram отдаёт РАЗНОЕ в зависимости от того, кем мы представились, и
+# «правильного» UA на все случаи нет — замерено:
+#   media/info      с Android-UA только 720x540 и 240x180, с десктопным —
+#                   все 14 размеров, включая оригинал 1440x1080;
+#   HTML профиля    с Android-UA содержит "profilePage_<id>" (по нему берём
+#                   user_id, когда web_profile_info отвечает 429), с
+#                   десктопным этого поля в разметке нет.
+# Ссылки CDN подписаны (oh=), дорезать размер в готовом url нельзя — нужный
+# вариант обязан прийти от API, поэтому UA выбираем под каждый эндпоинт.
 _MOBILE_UA = (
     "Instagram 275.0.0.27.98 Android (33/13; 280dpi; 720x1423; "
     "Xiaomi; Redmi 7; onclite; qcom; en_US; 458229258)"
+)
+_WEB_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
 
@@ -105,35 +131,24 @@ def _media_from_node(node: dict) -> Optional[Media]:
     return None
 
 
-def _from_embed(ctx: Context, shortcode: str) -> Optional[dict]:
-    """Fallback: parse the embed page. Returns a minimal dict in the same shape."""
-    r = ctx.get(
-        f"https://www.instagram.com/p/{shortcode}/embed/captioned/",
-        headers={"Referer": "https://www.instagram.com/"})
-    if r.status_code != 200:
+def _biggest(versions: list) -> Optional[dict]:
+    """Наибольший вариант по площади.
+
+    Порядку в ответе не доверяем: среди кандидатов идут и квадратные обрезки
+    (1080x1080 после 1440x1080), так что «первый» — не всегда самый большой.
+    """
+    sized = [v for v in versions if v.get("url")]
+    if not sized:
         return None
-    # снимаем JS-экранирование кавычек/слэшей; \uXXXX разберёт json.loads
-    html = r.text.replace('\\"', '"').replace("\\/", "/")
-    m = re.search(r'"shortcode_media":(\{.*?\})\s*\}\s*\]', html)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except ValueError:
-            pass
-    m = re.search(r'"video_url":"([^"]+)"', html)
-    if m:
-        try:
-            return {"is_video": True, "video_url": json.loads(f'"{m.group(1)}"')}
-        except ValueError:
-            return {"is_video": True, "video_url": m.group(1)}
-    return None
+    return max(sized, key=lambda v: (v.get("width") or 0) * (v.get("height") or 0))
 
 
 def _node_from_mobile(m: dict) -> Optional[dict]:
-    if m.get("video_versions"):
-        return {"is_video": True, "video_url": m["video_versions"][0]["url"]}
-    cand = (m.get("image_versions2") or {}).get("candidates") or []
-    return {"display_url": cand[0]["url"]} if cand else None
+    best = _biggest(m.get("video_versions") or [])
+    if best:
+        return {"is_video": True, "video_url": best["url"]}
+    best = _biggest((m.get("image_versions2") or {}).get("candidates") or [])
+    return {"display_url": best["url"]} if best else None
 
 
 def _shape_item(item: dict) -> Optional[dict]:
@@ -155,21 +170,33 @@ def _shape_item(item: dict) -> Optional[dict]:
 
 
 def _media_info(ctx: Context, media_id: str) -> Optional[dict]:
-    r = ctx.get(f"https://i.instagram.com/api/v1/media/{media_id}/info/",
-                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
-    if r.status_code != 200:
-        return None
-    try:
-        return _shape_item(r.json()["items"][0])
-    except (ValueError, LookupError):
-        return None
+    """media/info, с повтором на втором хосте.
+
+    i.instagram.com и www.instagram.com — один и тот же API. Замерено: от
+    троттлинга второй хост НЕ спасает, `feedback_required` выдаётся аккаунту
+    целиком (оба хоста отвечают одинаково). Повтор нужен для другого — когда
+    один хост недоступен сам по себе: DNS, блокировка по имени в сети, разовый
+    сбой. Стоит он одного лишнего запроса и только на пути, который уже провалился.
+    """
+    # веб-UA: только он приносит полный набор размеров (см. комментарий к _WEB_UA)
+    headers = {"User-Agent": _WEB_UA, "x-ig-app-id": _IG_APP_ID}
+    for host in _API_HOSTS:
+        r = ctx.get(f"{host}/api/v1/media/{media_id}/info/", headers=headers)
+        if r.status_code != 200:
+            log.debug("media/info %s -> HTTP %s", host, r.status_code)
+            continue
+        try:
+            return _shape_item(r.json()["items"][0])
+        except (ValueError, LookupError):
+            continue
+    return None
 
 
 def _reels_media(ctx: Context, reel_id: str) -> list:
     """feed/reels_media -> list of story items for a reel (highlight or user tray)."""
     r = ctx.get("https://i.instagram.com/api/v1/feed/reels_media/",
                 params={"reel_ids": reel_id},
-                headers={"User-Agent": _MOBILE_UA, "x-ig-app-id": _IG_APP_ID})
+                headers={"User-Agent": _WEB_UA, "x-ig-app-id": _IG_APP_ID})
     if r.status_code != 200:
         return []
     try:
@@ -311,7 +338,11 @@ def _node_to_result(data: dict, url: str, shortcode: str = "") -> Optional[Resul
                   duration=data.get("video_duration"),
                   timestamp=data.get("taken_at") or data.get("taken_at_timestamp"),
                   view_count=data.get("view_count") or data.get("play_count"),
-                  like_count=likes)
+                  like_count=likes,
+                  # oembed отдаёт только обложку поста. Она НЕ равна посту:
+                  # у карусели это первый кадр, у видео — постер. Помечаем,
+                  # иначе вызывающий примет огрызок за полный пост.
+                  is_preview=bool(data.get("_thumbnail_only")))
 
 
 _STORY_HELP = ("Stories require logged-in account cookies "
@@ -344,9 +375,10 @@ def extract(ctx: Context, url: str) -> Result:
         return _story_result(ctx, url, _items_gallery(items, username),
                              "user's stories")
     shortcode = _resolve_shortcode(ctx, url)
+    # oembed идёт последним и даёт лишь обложку — _node_to_result помечает
+    # такой результат is_preview=True, чтобы его не приняли за полный пост
     data = (_from_graphql(ctx, shortcode)
             or _from_mobile_info(ctx, shortcode)
-            or _from_embed(ctx, shortcode)
             or _from_oembed(ctx, shortcode))
     if not data:
         raise ExtractionError(

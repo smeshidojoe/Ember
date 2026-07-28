@@ -158,3 +158,15 @@ def test_bluesky_post_media():
         ctx, "https://bsky.app/profile/did:plc:test/post/abc123")
     assert res.media
     assert all(m.url.startswith("http") for m in res.media)
+
+
+def test_bluesky_serves_the_original_upload_not_the_cdn_reencode():
+    """The CDN 'fullsize' link is a WebP re-encode of the author's upload."""
+    ctx = FakeCtx(load("bluesky_post.json"))
+    res = bluesky.extract(
+        ctx, "https://bsky.app/profile/did:plc:test/post/abc123")
+    photo = res.media[0]
+    assert "com.atproto.sync.getBlob" in photo.url, "откатились на CDN-версию"
+    assert "cid=" in photo.url and "did=" in photo.url
+    assert photo.ext == "jpg", "расширение должно идти из mimeType записи"
+    assert "cdn.bsky.app" not in photo.url
