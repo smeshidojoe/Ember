@@ -33,9 +33,13 @@ PATTERNS = [
     re.compile(r"https?://(?:www\.|m\.)?vk\.com/\w+\?z=(?:video|clip)(-?\d+)_(\d+)(?:%2F|/)?(\w+)?"),
 ]
 
+# имя владельца — почти любые символы, поэтому video150080649_456241625
+# подходит под [\w.] и без явного исключения ловится как «профиль»
+_NOT_A_POST = r"(?!(?:video|clip)-?\d+_\d+)"
+
 PROFILE_PATTERNS = [
-    re.compile(r"https?://(?:www\.|m\.)?vk\.com/([\w.]+)/?$"),
-    re.compile(r"https?://(?:www\.)?vkvideo\.ru/@?([\w.]+)/?$"),
+    re.compile(r"https?://(?:www\.|m\.)?vk\.com/" + _NOT_A_POST + r"([\w.]+)/?$"),
+    re.compile(r"https?://(?:www\.)?vkvideo\.ru/@?" + _NOT_A_POST + r"([\w.]+)/?$"),
 ]
 
 

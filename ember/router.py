@@ -40,28 +40,41 @@ def _match_service(url: str):
     return None
 
 
-def _match_profile(url: str):
+def _by_attr(url: str, attr: str):
     for service in _SERVICES:
-        for pattern in getattr(service, "PROFILE_PATTERNS", ()):
+        for pattern in getattr(service, attr, ()):
             if pattern.match(url):
                 return service
     return None
+
+
+def _match_profile(url: str):
+    """Профиль/канал — но конкретный пост всегда важнее.
+
+    Шаблоны профилей неизбежно широкие (имя пользователя — почти любые
+    символы), поэтому ссылка на пост может под них подойти: у VK
+    `vkvideo.ru/video150080649_456241625` совпадает с шаблоном профиля,
+    потому что цифры и подчёркивание входят в \\w. Сужать каждый шаблон по
+    отдельности ненадёжно — правило проверяем здесь, один раз для всех
+    сервисов: раз ссылка уже разбирается как пост, профилем она не является.
+    """
+    if _match_service(url):
+        return None
+    return _by_attr(url, "PROFILE_PATTERNS")
 
 
 def _match_playlist(url: str):
-    for service in _SERVICES:
-        for pattern in getattr(service, "PLAYLIST_PATTERNS", ()):
-            if pattern.match(url):
-                return service
-    return None
+    """Набор/сет. БЕЗ проверки на пост: ссылка на сет намеренно совпадает и с
+    PATTERNS, и с PLAYLIST_PATTERNS — extract_playlist() обрабатывает её сам."""
+    return _by_attr(url, "PLAYLIST_PATTERNS")
 
 
 def _match_highlights(url: str):
-    for service in _SERVICES:
-        for pattern in getattr(service, "HIGHLIGHTS_PATTERNS", ()):
-            if pattern.match(url):
-                return service
-    return None
+    """Highlights берутся по ссылке на профиль — значит, то же правило, что и
+    в _match_profile: конкретный пост профилем не считается."""
+    if _match_service(url):
+        return None
+    return _by_attr(url, "HIGHLIGHTS_PATTERNS")
 
 
 def _build_ctx(timeout, proxies, session, cookies, cookies_from_browser,

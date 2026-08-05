@@ -67,7 +67,14 @@ class FakeCtx:
 # SoundCloud
 # --------------------------------------------------------------------------
 
-def test_soundcloud_normal_track_is_not_a_preview():
+@pytest.fixture
+def offline_soundcloud(monkeypatch):
+    """client_id обычно берётся из кэша, а на холодном — скрейпится из сети.
+    Тесты разбора не должны от этого зависеть."""
+    monkeypatch.setattr(soundcloud, "_get_client_id", lambda ctx, **kw: "test_id")
+
+
+def test_soundcloud_normal_track_is_not_a_preview(offline_soundcloud):
     track = load("soundcloud_track.json")
     ctx = FakeCtx({"url": "https://cdn.test/audio.mp3"})
     res = soundcloud._track_result(ctx, track, "https://soundcloud.com/x/y")
@@ -77,7 +84,7 @@ def test_soundcloud_normal_track_is_not_a_preview():
     assert res.duration and res.duration > 60
 
 
-def test_soundcloud_go_plus_track_is_flagged_as_preview():
+def test_soundcloud_go_plus_track_is_flagged_as_preview(offline_soundcloud):
     """policy=SNIP means a ~30s snippet of a much longer track."""
     track = load("soundcloud_snip.json")
     ctx = FakeCtx({"url": "https://cdn.test/audio.mp3"})
